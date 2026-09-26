@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Video Boost",
+  "short_name": "Video Boost",
+  "version": "1.0.0",
+  "description": "Panel IA minimaliste pour YouTube Studio : titres, descriptions, tags et hashtags optimisés, appliqués en un clic.",
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "action": { "default_title": "Video Boost", "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png" } },
+  "background": { "service_worker": "src/background.js" },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://api.groq.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://openrouter.ai/*",
+    "https://api.openai.com/*",
+    "https://api.mistral.ai/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://studio.youtube.com/*"],
+      "js": [
+        "src/shared/providers.js",
+        "src/content/studio.js",
+        "src/content/ai.js",
+        "src/content/panel.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    { "resources": ["src/content/panel.css"], "matches": ["https://studio.youtube.com/*"] }
+  ]
+}
