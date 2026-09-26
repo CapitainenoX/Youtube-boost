@@ -143,7 +143,37 @@ async function listModels(override) {
     .sort();
 }
 
+/* ---------- Channel videos (public RSS feed: the 15 latest uploads, with views) ---------- */
+
+const xmlText = s => (s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&');
+
+async function channelFeed(channelId) {
+  if (!/^UC[\w-]{20,}$/.test(channelId || '')) throw new Error('ID de chaîne invalide.');
+  const res = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`, { credentials: 'omit' });
+  if (!res.ok) throw new Error(`Flux de la chaîne indisponible (${res.status}).`);
+  const xml = await res.text();
+  const pick = (block, re) => xmlText(block.match(re)?.[1]);
+  const channel = pick(xml.split('<entry>')[0], /<title>([\s\S]*?)<\/title>/);
+  const videos = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map(([, e]) => ({
+    id: pick(e, /<yt:videoId>([\s\S]*?)<\/yt:videoId>/),
+    title: pick(e, /<title>([\s\S]*?)<\/title>/),
+    published: pick(e, /<published>([\s\S]*?)<\/published>/),
+    views: Number(pick(e, /<media:statistics views="(\d+)"/)) || 0,
+    likes: Number(pick(e, /<media:starRating count="(\d+)"/)) || null,
+    isShort: /\/shorts\//.test(pick(e, /<link rel="alternate" href="([^"]+)"/)),
+    description: pick(e, /<media:description>([\s\S]*?)<\/media:description>/).slice(0, 300)
+  })).filter(v => v.id);
+  return { channel, videos };
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg?.type === 'channel') {
+    channelFeed(msg.channelId)
+      .then(data => reply({ ok: true, ...data }))
+      .catch(e => reply({ ok: false, error: e.message || String(e) }));
+    return true;
+  }
   if (msg?.type === 'models') {
     listModels(msg.override)
       .then(models => reply({ ok: true, models }))
@@ -152,9 +182,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   }
 });
 
-// Toolbar icon toggles the panel on the current Studio tab.
+// Toolbar icon toggles the panel on the current Studio / YouTube tab.
 chrome.action.onClicked.addListener(tab => {
-  if (tab.id && tab.url?.startsWith('https://studio.youtube.com/')) {
+  if (tab.id && /^https:\/\/(studio|www)\.youtube\.com\//.test(tab.url || '')) {
     chrome.tabs.sendMessage(tab.id, { type: 'toggle' }).catch(() => {});
   } else {
     chrome.tabs.create({ url: 'https://studio.youtube.com/' });

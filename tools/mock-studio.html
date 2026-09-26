@@ -4,16 +4,37 @@
 <ytcp-video-title><div id="textbox" contenteditable="true">Minecraft maison facile</div></ytcp-video-title>
 <ytcp-video-description><div id="textbox" contenteditable="true">Dans cette vidéo je construis une maison.</div></ytcp-video-description>
 <ytcp-form-select id="category"><ytcp-dropdown-trigger><span class="dropdown-trigger-text">Jeux vidéo</span></ytcp-dropdown-trigger></ytcp-form-select>
+<div id="audience">
+  <tp-yt-paper-radio-group><tp-yt-paper-radio-button name="VIDEO_MADE_FOR_KIDS_MFK" aria-checked="false">Oui, elle est conçue pour les enfants</tp-yt-paper-radio-button>
+  <tp-yt-paper-radio-button name="VIDEO_MADE_FOR_KIDS_NOT_MFK" aria-checked="false">Non, elle n'est pas conçue pour les enfants</tp-yt-paper-radio-button></tp-yt-paper-radio-group>
+</div>
+<section><h3>Contenu modifié</h3><div><tp-yt-paper-radio-group id="altered"><tp-yt-paper-radio-button aria-checked="false">Oui</tp-yt-paper-radio-button><tp-yt-paper-radio-button aria-checked="true">Non</tp-yt-paper-radio-button></tp-yt-paper-radio-group></div></section>
 <ytcp-button id="toggle-button">Afficher plus</ytcp-button>
 <div id="adv"></div>
 </ytcp-video-metadata-editor>
 <ytcp-video-info><a href="https://youtube.com/shorts/abc123XYZ">https://youtube.com/shorts/abc123XYZ</a></ytcp-video-info>
-<div class="vidiq-sidebar">vidIQ · Keyword: minecraft house · Score 72 · Search volume High · Competition Low</div>
+<div class="vidiq-sidebar">vidIQ · Keyword: minecraft house · Search volume High · Competition Low<div class="vidiq-title-score">Title score <b id="vs">40</b>/100</div></div>
+<tp-yt-iron-dropdown id="catmenu" style="display:none"><tp-yt-paper-item>Films et animations</tp-yt-paper-item><tp-yt-paper-item>Jeux vidéo</tp-yt-paper-item><tp-yt-paper-item>Éducation</tp-yt-paper-item></tp-yt-iron-dropdown>
 </main>
 <script>
+// radios / checkbox / category / vidIQ score mocks
+document.addEventListener('click', e => {
+  const r = e.target.closest('tp-yt-paper-radio-button');
+  if (r) r.closest('tp-yt-paper-radio-group').querySelectorAll('tp-yt-paper-radio-button').forEach(x => x.setAttribute('aria-checked', String(x === r)));
+  const c = e.target.closest('ytcp-checkbox-lit');
+  if (c) c.setAttribute('aria-checked', String(c.getAttribute('aria-checked') !== 'true'));
+  if (e.target.closest('#category')) document.getElementById('catmenu').style.display = 'block';
+  const it = e.target.closest('tp-yt-paper-item');
+  if (it) { document.querySelector('#category .dropdown-trigger-text').textContent = it.textContent; document.getElementById('catmenu').style.display = 'none'; }
+});
+const titleBox = document.querySelector('ytcp-video-title #textbox');
+// Fake vidIQ: score grows with length up to 60 chars, bonus for a number, updated 300 ms after an edit.
+titleBox.addEventListener('input', () => setTimeout(() => {
+  const t = titleBox.innerText; document.getElementById('vs').textContent = Math.min(100, Math.round(t.length * 1.2) + (/\d/.test(t) ? 25 : 0));
+}, 300));
 document.getElementById('toggle-button').onclick = () => {
   if (document.getElementById('tags-container')) return;
-  document.getElementById('adv').innerHTML = '<ytcp-video-metadata-editor-advanced><ytcp-form-input-container id="tags-container"><ytcp-free-text-chip-bar><div id="chips"><ytcp-chip><div id="chip-text">minecraft</div><ytcp-icon-button id="delete-icon">x</ytcp-icon-button></ytcp-chip></div><input id="text-input"></ytcp-free-text-chip-bar></ytcp-form-input-container></ytcp-video-metadata-editor-advanced>';
+  document.getElementById('adv').innerHTML = '<ytcp-video-metadata-editor-advanced><ytcp-form-input-container id="tags-container"><ytcp-free-text-chip-bar><div id="chips"><ytcp-chip><div id="chip-text">minecraft</div><ytcp-icon-button id="delete-icon">x</ytcp-icon-button></ytcp-chip></div><input id="text-input"></ytcp-free-text-chip-bar></ytcp-form-input-container><ytcp-checkbox-lit aria-checked="false">Ma vidéo contient une promotion payante, comme un placement de produit</ytcp-checkbox-lit></ytcp-video-metadata-editor-advanced>';
   const input = document.getElementById('text-input');
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && input.value.trim()) {

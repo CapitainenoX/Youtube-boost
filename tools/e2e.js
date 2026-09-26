@@ -1,89 +1,142 @@
+// End-to-end check: loads the unpacked extension in Chromium against mock Studio / YouTube pages
+// and a mocked Groq API, then drives every panel flow.
+// Usage: PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1 node tools/e2e.js   (screenshots → $OUT or tmp)
 const { chromium } = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright');
 const fs = require('fs');
-const EXT = require('path').resolve(__dirname, '..');
+const path = require('path');
+const mocks = require('./mock-pages');
+
+const EXT = path.resolve(__dirname, '..');
 const OUT = process.env.OUT || require('os').tmpdir();
-const answer = 'Voici une optimisation ciblée sur **minecraft house**.\n```boost\n' + JSON.stringify({
-  titles: ['Minecraft : la maison facile en 5 min 🏠', 'Easy Minecraft House Tutorial', 'Maison Minecraft simple et belle'],
-  description: 'Construis une maison Minecraft facile en 5 minutes !\n\nTutoriel pas à pas pour débutants.',
-  tags: ['minecraft house', 'minecraft', 'easy minecraft house', 'minecraft tutorial', 'minecraft build'],
-  hashtags: ['#minecraft', '#shorts', 'minecraftbuild'],
-  category: 'Gaming'
-}) + '\n```';
-const sse = answer.match(/[\s\S]{1,25}/g).map(c => 'data: ' + JSON.stringify({ choices: [{ delta: { content: c } }] }) + '\n\n').join('') + 'data: [DONE]\n\n';
+const STUDIO = fs.readFileSync(path.join(__dirname, 'mock-studio.html'), 'utf8');
+
+const block = obj => '```boost\n' + JSON.stringify(obj) + '\n```';
+const answers = {
+  optimise: 'Voici une optimisation ciblée sur **minecraft house**.\n' + block({
+    titles: ['Minecraft : la maison facile en 5 min 🏠', 'Easy Minecraft House Tutorial', 'Maison Minecraft simple et belle'],
+    description: 'Construis une maison Minecraft facile en 5 minutes !\n\nTutoriel pas à pas pour débutants.',
+    tags: ['minecraft house', 'minecraft', 'easy minecraft house', 'minecraft tutorial', 'minecraft build'],
+    hashtags: ['#minecraft', '#shorts', 'minecraftbuild'],
+    category: 'Education'
+  }),
+  tester: block({ titles: ['Maison Minecraft', 'Maison Minecraft facile pour débutants', 'La maison Minecraft la plus simple en 5 minutes', 'Minecraft : 3 maisons faciles'] }),
+  channel: '- Tes **Shorts** font ~5× plus de vues que tes vidéos longues.\n- Les titres avec un chiffre marchent mieux.'
+};
+const sse = text => text.match(/[\s\S]{1,25}/g).map(c => 'data: ' + JSON.stringify({ choices: [{ delta: { content: c } }] }) + '\n\n').join('') + 'data: [DONE]\n\n';
+
+const log = (...a) => console.log(...a);
+const assert = (cond, msg) => { if (!cond) { console.error('✗', msg); process.exitCode = 1; } else log('✓', msg); };
 
 (async () => {
   const ctx = await chromium.launchPersistentContext('', {
     channel: 'chromium', headless: true, viewport: { width: 1400, height: 900 },
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`]
   });
-  let lastBody = null;
-  await ctx.route('https://api.groq.com/**', async route => {
-    const url = route.request().url();
-    if (url.endsWith('/models')) return route.fulfill({ json: { data: [{ id: 'llama-3.3-70b-versatile' }, { id: 'whisper-large-v3' }] } });
-    lastBody = route.request().postDataJSON();
-    route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: sse });
+  const prompts = [];
+  await ctx.route('https://api.groq.com/**', route => {
+    if (route.request().url().endsWith('/models')) return route.fulfill({ json: { data: [{ id: 'llama-3.3-70b-versatile' }] } });
+    const body = route.request().postDataJSON();
+    prompts.push(body);
+    const last = body.messages.at(-1).content;
+    const text = /title candidates/.test(last) ? answers.tester : /chaîne|marche/i.test(last) ? answers.channel : answers.optimise;
+    route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: sse(text) });
   });
-  await ctx.route('https://studio.youtube.com/**', r => r.fulfill({ contentType: 'text/html', body: fs.readFileSync(__dirname + '/mock-studio.html', 'utf8') }));
+  await ctx.route('https://www.youtube.com/feeds/**', r => r.fulfill({ contentType: 'application/xml', body: mocks.feed }));
+  await ctx.route('https://studio.youtube.com/**', r => r.fulfill({
+    contentType: 'text/html; charset=utf-8',
+    body: /\/channel\/.+\/videos/.test(r.request().url()) ? mocks.contentPage : STUDIO
+  }));
+  await ctx.route('https://www.youtube.com/watch**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: mocks.watchPage }));
+
   const page = await ctx.newPage();
-  page.on('console', m => m.type() === 'error' && console.log('console:', m.text()));
-  page.on('pageerror', e => console.log('pageerror:', e.message));
+  page.on('pageerror', e => log('pageerror:', e.message));
+  const vb = sel => page.locator(`#video-boost-root ${sel}`);
+  const shot = name => page.screenshot({ path: path.join(OUT, name) });
 
-  await page.goto('https://studio.youtube.com/channel/UCx/videos');
-  await page.waitForTimeout(1500);
-  console.log('panel on list page:', await page.locator('#video-boost-root').isVisible());
+  /* Studio content page → global panel, channel id captured, rows read */
+  await page.goto('https://studio.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx/videos');
+  await page.waitForTimeout(1200);
+  assert(await vb('.launcher').isVisible(), 'global mode: launcher shown, panel closed by default');
+  await vb('.launcher').click();
+  await vb('.vrow').first().waitFor({ timeout: 5000 });
+  assert(await vb('.vrow').count() === 3, 'Vidéos: 3 rows from Studio content table');
+  await shot('g1-studio-videos.png');
 
+  /* Settings: key + prefs */
+  await vb('.tab[data-tab="settings"]').click();
+  await vb('[data-ref="key"]').fill('gsk_test_1234');
+  await vb('[data-ref="key"]').press('Tab');
+  await vb('[data-pref="madeForKids"][data-val="0"]').click();
+  await vb('[data-pref="paidPromo"][data-val="1"]').click();
+  await vb('[data-pref="altered"][data-val="1"]').click();
+  await vb('[data-ref="prefCat"]').selectOption('6');
+  await page.waitForTimeout(400);
+  const saved = await vb('[data-ref="channelId"]').inputValue();
+  assert(saved === 'UCxxxxxxxxxxxxxxxxxxxxxx', 'channel id auto-filled from Studio URL');
+  await shot('g2-settings.png');
+
+  /* Global chat uses channel data */
+  await vb('.tab[data-tab="chat"]').click();
+  await vb('.quick [data-quick="works"]').click();
+  await page.waitForTimeout(1200);
+  assert(/"Minecraft maison facile" · 12000 views/.test(prompts.at(-1).messages[0].content), 'global chat: channel stats sent to the AI');
+
+  /* Edit page */
   await page.goto('https://studio.youtube.com/video/abc123XYZ/edit');
-  await page.waitForSelector('#video-boost-root .panel', { state: 'visible', timeout: 5000 });
-  await page.screenshot({ path: OUT + '/1-empty.png' });
-
-  // Settings
-  await page.locator('#video-boost-root .tab[data-tab="settings"]').click();
-  await page.locator('#video-boost-root [data-ref="key"]').fill('gsk_test_1234');
-  await page.locator('#video-boost-root [data-ref="key"]').press('Tab');
-  await page.waitForTimeout(400);
-  await page.locator('#video-boost-root [data-action="load-models"]').click();
-  await page.waitForTimeout(800);
-  console.log('models note:', await page.locator('#video-boost-root [data-ref="modelNote"]').innerText());
-  await page.screenshot({ path: OUT + '/2-settings.png' });
-
-  // Video tab
-  await page.locator('#video-boost-root .tab[data-tab="video"]').click();
-  await page.locator('#video-boost-root [data-action="show-tags"]').click();
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: OUT + '/3-video.png' });
-
-  // Chat
-  await page.locator('#video-boost-root .tab[data-tab="chat"]').click();
-  await page.locator('#video-boost-root .quick [data-quick="all"]').click();
-  await page.waitForSelector('#video-boost-root .card', { timeout: 8000 });
-  console.log('system prompt has vidIQ:', /Score 72/.test(lastBody.messages[0].content), '| short:', /Short/.test(lastBody.messages[0].content));
-  await page.screenshot({ path: OUT + '/4-chat.png' });
-
-  // deselect one tag then add
-  await page.locator('#video-boost-root .chip[data-tag="minecraft build"]').click();
-  await page.locator('#video-boost-root [data-apply="tags"]').click();
-  await page.waitForTimeout(600);
-  console.log('studio tags:', await page.$$eval('ytcp-chip #chip-text', els => els.map(e => e.textContent)));
-  await page.locator('#video-boost-root [data-apply="title"][data-k="0"]').click();
-  await page.locator('#video-boost-root [data-apply="description"]').click();
-  await page.locator('#video-boost-root [data-apply="hashtags"]').click();
+  await vb('.panel').waitFor({ state: 'visible', timeout: 5000 });
+  await vb('.tab[data-tab="video"]').click();
   await page.waitForTimeout(300);
-  console.log('title:', await page.locator('ytcp-video-title #textbox').innerText());
-  console.log('desc:', JSON.stringify(await page.locator('ytcp-video-description #textbox').innerText()));
-  await page.screenshot({ path: OUT + '/5-applied.png' });
+  await vb('[data-action="apply-prefs"]').click();
+  await page.waitForTimeout(800);
+  const params = await page.evaluate(() => ({
+    kidsNo: document.querySelector('[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]').getAttribute('aria-checked'),
+    promo: document.querySelector('ytcp-checkbox-lit').getAttribute('aria-checked'),
+    altYes: document.querySelector('#altered tp-yt-paper-radio-button').getAttribute('aria-checked'),
+    cat: document.querySelector('#category .dropdown-trigger-text').textContent
+  }));
+  assert(params.kidsNo === 'true' && params.promo === 'true' && params.altYes === 'true' && params.cat === 'Jeux vidéo', `prefs applied ${JSON.stringify(params)}`);
+  await vb('[data-ref="catSelect"]').selectOption('12');
+  await page.waitForTimeout(600);
+  assert(await page.locator('#category .dropdown-trigger-text').textContent() === 'Éducation', 'category changed from the panel');
 
-  // remove a tag from Vidéo tab
-  await page.locator('#video-boost-root .tab[data-tab="video"]').click();
-  await page.locator('#video-boost-root [data-remove-tag="minecraft tutorial"]').click();
-  await page.waitForTimeout(400);
-  console.log('after remove:', await page.$$eval('ytcp-chip #chip-text', els => els.map(e => e.textContent)));
+  /* Title tester (vidIQ mock score) */
+  await vb('[data-action="tester-start"]').click();
+  await vb('[data-action="tester-start"]').waitFor({ timeout: 30000 });
+  const title = await page.locator('ytcp-video-title #textbox').innerText();
+  const status = await vb('.tester .muted').first().innerText();
+  log('  tester →', title, '|', status);
+  assert(title !== 'Minecraft maison facile' && /Meilleur titre/.test(status), 'title tester kept a better-scoring title');
+  await shot('e1-tester.png');
 
-  // dark + close/launcher
+  /* Chat proposal → apply category + tags */
+  await vb('.tab[data-tab="chat"]').click();
+  await vb('.quick [data-quick="all"]').click();
+  await vb('.card').waitFor({ timeout: 8000 });
+  await vb('[data-apply="tags"]').click();
+  await page.waitForTimeout(600);
+  const tags = await page.$$eval('ytcp-chip #chip-text', els => els.map(e => e.textContent));
+  assert(tags.length === 5 && tags[0] === 'minecraft', `tags appended without duplicate ${JSON.stringify(tags)}`);
+  await shot('e2-chat.png');
+
+  /* Video picker from the edit page */
+  await vb('[data-action="my-videos"]').click();
+  await vb('.vrow').first().waitFor({ timeout: 5000 });
+  await shot('e3-picker.png');
+  await vb('[data-ref="pickInput"]').fill('https://youtu.be/ccccccccc02');
+  await vb('[data-ref="pickForm"] button').click();
+  await page.waitForURL('**/video/ccccccccc02/edit');
+  assert(true, 'picker opened another video edit page');
+
+  /* youtube.com watch page: hidden tags */
+  await page.goto('https://www.youtube.com/watch?v=bbbbbbbbbb1');
+  await page.waitForTimeout(1200);
+  if (await vb('.launcher').isVisible()) await vb('.launcher').click();
+  await vb('[data-action="copy-watched-tags"]').waitFor({ timeout: 5000 });
+  const wtags = await vb('.field .chip.static').allInnerTexts();
+  assert(wtags.includes('survival base'), `youtube.com: hidden tags read ${JSON.stringify(wtags)}`);
   await page.evaluate(() => document.documentElement.setAttribute('dark', ''));
   await page.waitForTimeout(1000);
-  await page.screenshot({ path: OUT + '/6-dark.png' });
-  await page.keyboard.press('Alt+KeyB');
-  await page.waitForTimeout(300);
-  console.log('launcher visible after Alt+B:', await page.locator('#video-boost-root .launcher').isVisible());
+  await shot('y1-watch-dark.png');
+
   await ctx.close();
 })().catch(e => { console.error(e); process.exit(1); });

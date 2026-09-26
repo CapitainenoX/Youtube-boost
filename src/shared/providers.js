@@ -53,6 +53,17 @@
     temperature: 0.7,
     contentLang: 'Français',   // language of titles / descriptions
     tagMode: 'en',             // 'en' = English only, 'mixed' = English + content language
-    useVidiq: true
+    useVidiq: true,
+    // Default video parameters, applied by "Appliquer mes préférences" (never automatically).
+    prefs: {
+      madeForKids: false,      // true / false
+      paidPromo: false,
+      altered: false,          // altered or synthetic (AI) content
+      category: -1             // index in VBStudio.CATEGORIES, -1 = don't touch
+    },
+    channelId: '',             // auto-filled from Studio, editable in Réglages
+    showOnYoutube: true,       // launcher on www.youtube.com
+    vidiqScoreSelector: '',    // optional CSS selector for vidIQ's title score
+    testerRounds: 3            // title tester: max AI rounds
   };
 })(typeof self !== 'undefined' ? self : window);

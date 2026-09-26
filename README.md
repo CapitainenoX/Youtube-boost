@@ -1,38 +1,47 @@
 # Video Boost
 
-Extension Chrome (Manifest V3) qui ajoute un panel IA minimaliste dans **YouTube Studio**, uniquement sur la page de gestion d'une vidéo ou d'un Short (`studio.youtube.com/video/<id>/edit`).
+Extension Chrome (Manifest V3) : un panel IA minimaliste dans **YouTube Studio** et sur **YouTube**.
 
-## Les 3 pages
+## Deux panels
 
-- **Chat** : discute avec l'IA. Elle lit le titre, la description, les tags, la catégorie et les données vidIQ de la page, puis renvoie des propositions applicables :
-  - 3 titres → *Appliquer*
-  - description → *Remplacer*
-  - tags courts, en anglais, pensés pour l'algorithme → présélectionnés, clic pour retirer, *Ajouter N* (ajoutés **à la suite** des tags existants, sans doublon, dans la limite des 500 caractères)
-  - hashtags → *Ajouter à la description* (`#shorts` inclus pour un Short)
-  - *Tout appliquer* en un clic
-  - Raccourcis : Tout optimiser · Tags · Titres · Description · Hashtags
-- **Vidéo** : titre, description, tags (avec compteurs 100 / 5000 / 500), suppression d'un tag, catégorie, détection vidIQ et une checklist SEO. Se met à jour pendant que tu édites dans Studio.
-- **Réglages** : Groq, Google Gemini, OpenRouter (Claude, GPT, Llama…), OpenAI ou Mistral · clé API · modèle (*Tester* vérifie la clé et liste les modèles) · langue des titres/descriptions · tags en anglais ou anglais + langue de la vidéo · créativité · vidIQ on/off.
+### Page d'une vidéo ou d'un Short (`studio.youtube.com/video/<id>/edit`)
+- **Chat** : l'IA lit le titre, la description, les tags, la catégorie, vidIQ et les stats de ta chaîne, puis propose des éléments applicables en un clic :
+  - titres → *Appliquer* · description → *Remplacer* · catégorie → *Appliquer*
+  - tags en anglais, courts, présélectionnés → *Ajouter N* (à la suite, sans doublon, limite de 500 caractères respectée)
+  - hashtags → *Ajouter à la description* (`#shorts` pour un Short) · *Tout appliquer*
+  - Outils : commentaire épinglé, texte de miniature, hooks, chapitres, traductions, idées de Shorts, analyse de la chaîne
+- **Vidéo** : titre, description, tags (compteurs 100 / 5000 / 500, retrait d'un tag), **testeur de titres**, **paramètres** (catégorie, conçue pour les enfants, promotion payée, contenu modifié / IA, *Appliquer mes préférences*) et checklist SEO.
+- **Mes vidéos** (icône liste en haut) : choisir une autre vidéo ou coller un lien / ID pour l'ouvrir.
+
+### Reste de Studio et youtube.com
+- **Vidéos** : tes dernières vidéos avec vues, ratio face à la médiane de la chaîne, Shorts vs vidéos longues et meilleure vidéo. Clique une vidéo pour ouvrir sa page d'édition.
+- Sur une vidéo YouTube (la tienne ou celle d'un concurrent) : ses **tags cachés**, ses vues et un bouton *Analyser*.
+- **Chat** : « Qu'est-ce qui marche ? », idées de vidéos, quand publier. Les chiffres viennent uniquement de tes vidéos.
+
+### Réglages
+Fournisseur IA (Groq, Gemini, OpenRouter, OpenAI, Mistral), clé, modèle (*Tester*), langue, langue des tags, créativité, **préférences vidéo par défaut** (enfants, promotion payée, contenu IA, catégorie), ID de chaîne (rempli automatiquement), vidIQ on/off, affichage sur youtube.com, réglages avancés du testeur.
+
+## Testeur de titres
+L'IA propose des titres. Chacun est tapé dans le vrai champ Studio, vidIQ le note, et le test continue jusqu'à obtenir **100** ou un titre **meilleur que l'actuel** (3 tours max, réglable). Le meilleur titre reste dans le champ, sinon le titre d'origine est remis. Rien n'est enregistré. Sans vidIQ, un score local transparent le remplace (longueur, mot-clé, chiffre, accroche). Si le score vidIQ n'est pas lu, indique son sélecteur CSS dans Réglages → Avancé.
 
 Rien n'est écrit dans Studio sans ton clic, et rien n'est enregistré sans le bouton **Enregistrer** de Studio.
 
-## Installation
+## Installation (PowerShell)
 
-1. `chrome://extensions` → activer le **Mode développeur**.
-2. **Charger l'extension non empaquetée** → choisir ce dossier.
-3. Ouvrir une vidéo dans YouTube Studio → le panel apparaît à droite. `Alt+B` ou l'icône de l'extension l'ouvre / le ferme.
-4. Réglages → choisir un fournisseur, coller la clé (Groq et Gemini ont une clé gratuite), *Tester*.
+```powershell
+cd "$env:USERPROFILE\Desktop"
+git clone -b claude/eloquent-dijkstra-74js81 https://github.com/CapitainenoX/Youtube-boost.git
+cd Youtube-boost; (Get-Location).Path | Set-Clipboard
+Start-Process chrome "chrome://extensions"
+```
+Ensuite : **Mode développeur** → **Charger l'extension non empaquetée** → colle le chemin. Mise à jour : `git pull`, puis ↻ sur l'extension.
 
-## vidIQ
-
-Les tags sont saisis dans le vrai champ de Studio, donc vidIQ les voit et les note comme s'ils étaient tapés à la main. Quand vidIQ est installé, le texte de ses panneaux (scores, volumes, tags suggérés) est envoyé à l'IA comme contexte, pour privilégier les mots-clés à fort score et faible concurrence.
-
-## Sécurité
-
-La clé API reste dans `chrome.storage.local`. Les appels à l'IA partent du service worker, jamais depuis la page YouTube, et la clé n'est jamais réaffichée dans le panel.
+## Données et sécurité
+- La clé API reste dans `chrome.storage.local`. Les appels à l'IA partent du service worker, jamais depuis la page YouTube.
+- Liste des vidéos : le tableau « Contenu » de Studio quand il est ouvert (vues, commentaires), sinon le flux public de la chaîne (15 dernières vidéos, vues).
+- Tags d'une vidéo YouTube : lus dans les données publiques de sa page.
 
 ## Développement
-
 - Pas de build : HTML/CSS/JS vanilla.
-- `node tools/make-icons.js` : régénère les icônes (Playwright).
-- `PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1 node tools/e2e.js` : charge l'extension dans Chromium sur une fausse page Studio (`tools/mock-studio.html`) avec une IA simulée, puis teste réglages, chat, ajout de tags, titre, description, hashtags et suppression.
+- `node tools/make-icons.js` : régénère les icônes.
+- `PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1 node tools/e2e.js` : charge l'extension dans Chromium sur de fausses pages Studio / YouTube (`tools/mock-*`) avec une IA simulée et vérifie tous les parcours.
