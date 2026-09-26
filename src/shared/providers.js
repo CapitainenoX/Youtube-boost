@@ -59,6 +59,7 @@
       madeForKids: false,      // true / false
       paidPromo: false,
       altered: false,          // altered or synthetic (AI) content
+      ageRestricted: false,    // 18+ age restriction
       category: -1             // index in VBStudio.CATEGORIES, -1 = don't touch
     },
     channelId: '',             // auto-filled from Studio, editable in Réglages

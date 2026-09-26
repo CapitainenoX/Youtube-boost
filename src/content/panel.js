@@ -529,10 +529,11 @@
             ${S.CATEGORIES.map((c, k) => `<option value="${k}" ${k === cat ? 'selected' : ''}>${esc(c[0])}</option>`).join('')}
           </select></label>
         <div class="param"><span>Conçue pour les enfants</span>${seg('kids', pm.madeForKids)}</div>
-        <div class="param"><span>Promotion payée</span>${seg('promo', pm.paidPromo)}</div>
+        <div class="param"><span>Promotion rémunérée</span>${seg('promo', pm.paidPromo)}</div>
         <div class="param"><span>Contenu modifié / IA</span>${seg('altered', pm.altered)}</div>
+        <div class="param"><span>Limite d’âge 18+</span>${seg('age', pm.ageRestricted)}</div>
       </div>
-      <div class="help">Préférences : enfants ${prefs.madeForKids ? 'oui' : 'non'} · promo ${prefs.paidPromo ? 'oui' : 'non'} · IA ${prefs.altered ? 'oui' : 'non'}${prefs.category >= 0 ? ` · ${esc(S.CATEGORIES[prefs.category][0])}` : ''}. Un choix vide = réglage non trouvé sur la page.</div>
+      <div class="help">Préférences : enfants ${prefs.madeForKids ? 'oui' : 'non'} · promo ${prefs.paidPromo ? 'oui' : 'non'} · IA ${prefs.altered ? 'oui' : 'non'} · 18+ ${prefs.ageRestricted ? 'oui' : 'non'}${prefs.category >= 0 ? ` · ${esc(S.CATEGORIES[prefs.category][0])}` : ''}. Un choix vide = réglage non trouvé sur la page.</div>
     </div>`;
   }
 
@@ -620,6 +621,7 @@
       if (name === 'kids') S.setMadeForKids(yes);
       if (name === 'promo') await S.setPaidPromo(yes);
       if (name === 'altered') await S.setAltered(yes);
+      if (name === 'age') await S.setAgeRestricted(yes);
       toast('Paramètre modifié · clique Enregistrer');
     } catch (e) { toast(e.message, true); }
     setTimeout(() => renderVideo(true), 250);
@@ -632,6 +634,7 @@
     await step(() => S.setMadeForKids(p.madeForKids));
     await step(() => S.setPaidPromo(p.paidPromo));
     await step(() => S.setAltered(p.altered));
+    await step(() => S.setAgeRestricted(p.ageRestricted));
     if (p.category >= 0) await step(() => S.setCategory(p.category));
     toast(errors.length ? errors[0] : 'Préférences appliquées · clique Enregistrer', !!errors.length);
     setTimeout(() => renderVideo(true), 300);
@@ -810,8 +813,9 @@
         <div class="label">Préférences vidéo par défaut</div>
         <div class="params">
           <div class="param"><span>Conçue pour les enfants</span>${prefSeg('madeForKids', p.madeForKids)}</div>
-          <div class="param"><span>Promotion payée</span>${prefSeg('paidPromo', p.paidPromo)}</div>
+          <div class="param"><span>Promotion rémunérée</span>${prefSeg('paidPromo', p.paidPromo)}</div>
           <div class="param"><span>Contenu modifié / IA</span>${prefSeg('altered', p.altered)}</div>
+          <div class="param"><span>Limite d’âge 18+</span>${prefSeg('ageRestricted', p.ageRestricted)}</div>
           <label class="param"><span>Catégorie</span>
             <select class="input sm" data-ref="prefCat"><option value="-1">Ne pas changer</option>${S.CATEGORIES.map((c, k) => `<option value="${k}" ${k === p.category ? 'selected' : ''}>${esc(c[0])}</option>`).join('')}</select></label>
         </div>

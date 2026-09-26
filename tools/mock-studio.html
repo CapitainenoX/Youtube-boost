@@ -10,7 +10,7 @@
 <div id="adv"></div>
 </ytcp-video-metadata-editor>
 <ytcp-video-info><a href="https://youtube.com/shorts/abc123XYZ">https://youtube.com/shorts/abc123XYZ</a></ytcp-video-info>
-<div class="vidiq-sidebar">vidIQ · Keyword: minecraft house · Search volume High · Competition Low<div class="vidiq-title-score">Title score <b id="vs">40</b>/100</div></div>
+<style class="vidiq-styles">.vidiq-scope .x { max-width: 350px; } /* 99/100 */</style><div class="vidiq-sidebar">vidIQ · Keyword: minecraft house · Search volume High · Competition Low<div class="vidiq-title-score">Title score <b id="vs">40</b>/100</div></div>
 <tp-yt-iron-dropdown id="catmenu" style="display:none"><tp-yt-paper-item>Films et animations</tp-yt-paper-item><tp-yt-paper-item>Jeux vidéo</tp-yt-paper-item><tp-yt-paper-item>Éducation</tp-yt-paper-item></tp-yt-iron-dropdown>
 </main>
 <script>
@@ -22,7 +22,9 @@ shadow('mock-audience', `<h4>Public</h4><tp-yt-paper-radio-group><tp-yt-paper-ra
   <tp-yt-paper-radio-button aria-checked="false">Non, elle n'est pas conçue pour les enfants</tp-yt-paper-radio-button></tp-yt-paper-radio-group>`);
 shadow('mock-altered', `<section><h3>Contenu modifié</h3><p>Votre contenu est-il réaliste et modifié ou synthétique ?</p><div><tp-yt-paper-radio-group id="altered"><tp-yt-paper-radio-button aria-checked="false">Oui</tp-yt-paper-radio-button><tp-yt-paper-radio-button aria-checked="true">Non</tp-yt-paper-radio-button></tp-yt-paper-radio-group></div></section>`);
 shadow('mock-category', `<ytcp-form-select id="category"><ytcp-dropdown-trigger><span class="label">Catégorie</span> <span class="dropdown-trigger-text">Jeux vidéo</span></ytcp-dropdown-trigger></ytcp-form-select>`);
-shadow('mock-promo', `<ytcp-checkbox-lit aria-checked="false">Ma vidéo contient une promotion payante, comme un placement de produit</ytcp-checkbox-lit>`);
+// Real Studio (from a user's diagnostic): paid promotion and age limit are named Yes/No radios.
+shadow('mock-promo', `<h4>Promotion rémunérée</h4><tp-yt-paper-radio-group><tp-yt-paper-radio-button name="VIDEO_PAID_PRODUCT_PLACEMENT_NOTIFY" aria-checked="false">Oui, ma vidéo inclut une promotion rémunérée</tp-yt-paper-radio-button><tp-yt-paper-radio-button name="VIDEO_PAID_PRODUCT_PLACEMENT_NO" aria-checked="false">Non, ma vidéo n'inclut pas de promotion rémunérée</tp-yt-paper-radio-button></tp-yt-paper-radio-group>
+  <tp-yt-paper-radio-group id="age-restriction-group"><tp-yt-paper-radio-button name="VIDEO_AGE_RESTRICTION_SELF" aria-checked="false">Oui, limiter ma vidéo aux plus de 18 ans</tp-yt-paper-radio-button><tp-yt-paper-radio-button name="VIDEO_AGE_RESTRICTION_NONE" aria-checked="true">Non, ne pas limiter ma vidéo aux plus de 18 ans</tp-yt-paper-radio-button></tp-yt-paper-radio-group>`);
 const catText = () => document.querySelector('mock-category').shadowRoot.querySelector('.dropdown-trigger-text');
 document.addEventListener('click', e => {
   const t = e.composedPath()[0];

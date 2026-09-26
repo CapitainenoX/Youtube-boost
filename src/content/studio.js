@@ -59,7 +59,7 @@
   // (keyword scores, suggested tags, channel tags…) without depending on its exact markup.
   function readVidiq() {
     const nodes = [...document.querySelectorAll('[class*="vidiq" i], [id*="vidiq" i], [data-vidiq], vidiq-root, [class*="vidIQ"]')]
-      .filter(n => !n.closest('#video-boost-root'));
+      .filter(n => !n.closest('#video-boost-root') && !/^(STYLE|SCRIPT|LINK|META|TEMPLATE)$/.test(n.tagName));
     const top = nodes.filter(n => !nodes.some(o => o !== n && o.contains(n)));
     const raw = top.map(n => n.innerText || '').join('\n').replace(/\n{2,}/g, '\n').trim();
     return { detected: nodes.length > 0, text: raw.slice(0, 2500) };
@@ -270,6 +270,15 @@
     return radios().find(r => { const t = deepText(r); return (yes ? YES : NO).test(t) && kids.test(t); }) || null;
   }
 
+  // Studio (2026) asks a Yes/No question: VIDEO_PAID_PRODUCT_PLACEMENT_NOTIFY / _NO.
+  function paidPromoRadio(yes) {
+    const byName = deep(`[name="${yes ? 'VIDEO_PAID_PRODUCT_PLACEMENT_NOTIFY' : 'VIDEO_PAID_PRODUCT_PLACEMENT_NO'}"]`);
+    if (byName) return byName;
+    const re = /promotion (r[ée]mun[ée]r[ée]e|pay[ée]e)|paid promotion|placement de produit|product placement/i;
+    return radios().find(r => { const t = deepText(r); return (yes ? YES : NO).test(t) && re.test(t); }) || null;
+  }
+
+  // Older layout: a single checkbox.
   function paidPromoBox() {
     const re = /paid promotion|promotion pay|communication commerciale|placement de produit|product placement|parrainage|sponsor/i;
     return deepAll(CHECKBOX).filter(c => !c.parentElement?.closest?.('ytcp-checkbox-lit, tp-yt-paper-checkbox'))
@@ -279,7 +288,8 @@
   // The altered/synthetic question is a plain Yes/No group under a heading that mentions it.
   const ALTERED = /altered|synthetic|synth[ée]tique|contenu (modifi|alt[ée]r)|modifi[ée] ou synth|r[ée]aliste|g[ée]n[ée]r[ée]|\bIA\b|\bAI\b/i;
   function alteredRadio(yes) {
-    const byName = deepAll(RADIO).find(r => /ALTER|SYNTH/i.test(r.getAttribute('name') || '') && (yes ? /YES|TRUE|_ALTERED$/i : /NO|FALSE|NOT/i).test(r.getAttribute('name')));
+    const byName = deep(`[name="${yes ? 'VIDEO_HAS_ALTERED_CONTENT_YES' : 'VIDEO_HAS_ALTERED_CONTENT_NO'}"]`) ||
+      deepAll(RADIO).find(r => /ALTER|SYNTH/i.test(r.getAttribute('name') || '') && (yes ? /_YES$/i : /_NO$/i).test(r.getAttribute('name')));
     if (byName) return byName;
     for (const g of deepAll(GROUP)) {
       const rs = radios(g);
@@ -296,6 +306,14 @@
     }
     return null;
   }
+
+  function ageRadio(restricted) {
+    const byName = deep(`[name="${restricted ? 'VIDEO_AGE_RESTRICTION_SELF' : 'VIDEO_AGE_RESTRICTION_NONE'}"]`);
+    if (byName) return byName;
+    return radios().find(r => { const t = deepText(r); return (restricted ? YES : NO).test(t) && /18 ans|over 18|18\+/i.test(t); }) || null;
+  }
+
+  const pick = (yesEl, noEl) => (yesEl && isChecked(yesEl) ? true : noEl && isChecked(noEl) ? false : null);
 
   const CATEGORY_TRIGGER = '#category ytcp-dropdown-trigger, ytcp-form-select#category, #category';
   function categoryField() {
@@ -316,13 +334,14 @@
   function readParams() {
     const cat = categoryText();
     const kidsYes = kidsRadio(true), kidsNo = kidsRadio(false);
-    const altYes = alteredRadio(true), altNo = alteredRadio(false);
+    const promoYes = paidPromoRadio(true), promoNo = paidPromoRadio(false);
     return {
       category: cat,
       categoryIndex: categoryIndex(cat),
-      madeForKids: kidsYes && isChecked(kidsYes) ? true : kidsNo && isChecked(kidsNo) ? false : null,
-      paidPromo: isChecked(paidPromoBox()),
-      altered: altYes && isChecked(altYes) ? true : altNo && isChecked(altNo) ? false : null
+      madeForKids: pick(kidsYes, kidsNo),
+      paidPromo: promoYes || promoNo ? pick(promoYes, promoNo) : isChecked(paidPromoBox()),
+      altered: pick(alteredRadio(true), alteredRadio(false)),
+      ageRestricted: pick(ageRadio(true), ageRadio(false))
     };
   }
 
@@ -346,9 +365,17 @@
   }
 
   async function setPaidPromo(on) {
-    const box = await withMore(paidPromoBox);
-    if (!box) throw new Error('Case « promotion payée » introuvable (Réglages → Avancé → Diagnostic).');
+    const r = await withMore(() => paidPromoRadio(on));
+    if (r) { if (isChecked(r) !== true) clickControl(r); return; }
+    const box = paidPromoBox();
+    if (!box) throw new Error('Question « promotion rémunérée » introuvable (Réglages → Avancé → Diagnostic).');
     if (isChecked(box) !== on) box.click();
+  }
+
+  async function setAgeRestricted(on) {
+    const r = await withMore(() => ageRadio(on));
+    if (!r) throw new Error('Question « limite d’âge » introuvable (Réglages → Avancé → Diagnostic).');
+    if (isChecked(r) !== true) clickControl(r);
   }
 
   async function setAltered(yes) {
@@ -365,12 +392,15 @@
     if (!trigger) throw new Error('Menu catégorie introuvable (Réglages → Avancé → Diagnostic).');
     const targets = want.map(norm);
     trigger.scrollIntoView?.({ block: 'center' });
-    (deep('ytcp-dropdown-trigger, [role="button"], #container', trigger.shadowRoot || trigger) || trigger).click();
+    const inner = deep('ytcp-dropdown-trigger, [role="button"], #container', trigger.shadowRoot || trigger);
+    (inner || trigger).click();
+    const matches = o => { const t = norm(deepText(o)); return targets.some(x => t === x || t.startsWith(x + ' ')); };
     for (let i = 0; i < 25; i++) {
+      if (i === 10 && inner) trigger.click(); // nothing opened yet: try the outer element
       await new Promise(r => setTimeout(r, 80));
       rootsCache.at = 0; // the dropdown popup is created on open
       const opt = deepAll('tp-yt-paper-item, ytcp-text-menu tp-yt-paper-item, [role="option"], [role="menuitem"], [role="menuitemradio"]')
-        .find(o => visible(o) && targets.includes(norm(deepText(o))));
+        .find(o => visible(o) && matches(o));
       if (opt) { opt.click(); return; }
     }
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
@@ -412,7 +442,7 @@
       url: location.pathname,
       found: {
         title: !!$(SEL.title), description: !!$(SEL.description), tags: !!tagsContainer(),
-        kidsYes: !!kidsRadio(true), kidsNo: !!kidsRadio(false), paidPromo: !!paidPromoBox(),
+        kidsYes: !!kidsRadio(true), kidsNo: !!kidsRadio(false), paidPromo: !!(paidPromoRadio(true) || paidPromoBox()), ageLimit: !!ageRadio(true),
         alteredYes: !!alteredRadio(true), alteredNo: !!alteredRadio(false), category: !!categoryField(), save: !!saveButton()
       },
       params: p,
@@ -487,7 +517,7 @@
 
   window.VBStudio = {
     read, videoId, setTitle, setDescription, appendHashtags, addTags, removeTag, ensureTagsVisible, tagCost, tagsLength, cleanTag, LIMITS,
-    CATEGORIES, categoryIndex, readParams, setMadeForKids, setPaidPromo, setAltered, setCategory, save, saveButton, diagnose,
+    CATEGORIES, categoryIndex, readParams, setMadeForKids, setPaidPromo, setAltered, setCategory, save, saveButton, diagnose, setAgeRestricted,
     readVidiq, readVidiqScore, channelId, readContentRows
   };
 })();
