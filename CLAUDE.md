@@ -2,7 +2,7 @@
 
 - `src/background.js` — service worker: all AI calls (streaming over Port `vb-chat`, `models` message) + channel RSS (`channel` message). Keys never leave it.
 - `src/shared/providers.js` — provider catalogue + default settings (shared by SW and content scripts).
-- `src/content/studio.js` — YouTube Studio DOM adapter (`window.VBStudio`): fields, tags, params (category/kids/promo/altered), vidIQ text+score, content rows. Selectors have fallbacks; Studio markup changes without notice.
+- `src/content/studio.js` — YouTube Studio DOM adapter (`window.VBStudio`): fields, tags, params (category/kids/promo/altered), vidIQ text+score, content rows, save, `diagnose()`. Lookups pierce shadow roots (`deepAll`, cached 1 s); selectors have label fallbacks — Studio markup changes without notice.
 - `src/content/youtube.js` — www.youtube.com watch/Shorts reader (`window.VBYouTube`, parses ytInitialPlayerResponse).
 - `src/content/tools.js` — one-shot `ask()`, title tester, local title score (`window.VBTools`).
 - `src/content/ai.js` — system prompt + parsing of the ```boost JSON block (`window.VBAI`).
@@ -12,4 +12,4 @@
 ## Never
 - Write to Studio without an explicit user click.
 - Send the API key from the content script or show it back in the UI.
-- Save in Studio on the user's behalf.
+- Save in Studio without a click on the panel's « Enregistrer » button (`VBStudio.save()` is only called from it).

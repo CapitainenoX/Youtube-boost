@@ -72,7 +72,7 @@
       title: text($(SEL.title)),
       description: text($(SEL.description)),
       tags: readTags(),
-      category: text($(SEL.category)).split('\n')[0] || '',
+      category: categoryText(),
       vidiq: readVidiq(),
       found: { title: !!$(SEL.title), description: !!$(SEL.description), tags: !!tagsContainer() }
     };
@@ -183,8 +183,9 @@
   }
 
   /* ---------- Other parameters: category, audience, paid promotion, altered content ----------
-   * Found by name attribute first, then by their visible label (FR + EN), so a Studio redesign or the
-   * interface language does not break them. Every reader returns null when the control is not found. */
+   * Studio mixes Polymer (light DOM) and Lit components (shadow DOM), so these lookups walk every open
+   * shadow root. Each control is found by name/id first, then by its visible label (FR + EN) or the
+   * heading of its section. Every reader returns null when the control is not found. */
 
   // Studio's 15 categories, in Studio's order. Matching accepts either language.
   const CATEGORIES = [
@@ -203,53 +204,117 @@
     return CATEGORIES.findIndex(pair => pair.some(c => norm(c) === n || (n.length > 3 && norm(c).startsWith(n))));
   }
 
+  const inPanel = el => !!el.closest?.('#video-boost-root') || el.getRootNode?.().host?.id === 'video-boost-root';
+
+  // Every open shadow root under `root` (ours excluded). The page-wide list is cached for 1 s because
+  // the panel re-reads the parameters on a timer and a full DOM walk is the expensive part.
+  function collectRoots(root) {
+    const found = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    for (let n = walker.currentNode; n; n = walker.nextNode()) {
+      if (n.shadowRoot && n.id !== 'video-boost-root') found.push(n.shadowRoot, ...collectRoots(n.shadowRoot));
+    }
+    return found;
+  }
+  let rootsCache = { at: 0, roots: [] };
+  function shadowRoots(root) {
+    if (root !== document) return collectRoots(root);
+    if (Date.now() - rootsCache.at > 1000) rootsCache = { at: Date.now(), roots: collectRoots(document) };
+    return rootsCache.roots;
+  }
+
+  // querySelectorAll that also searches inside every open shadow root.
+  function deepAll(selector, root = document) {
+    const out = [...root.querySelectorAll(selector)];
+    for (const r of shadowRoots(root)) if (r.host.isConnected) out.push(...r.querySelectorAll(selector));
+    return out.filter(el => !inPanel(el));
+  }
+  const deep = (selector, root) => deepAll(selector, root)[0] || null;
+
+  // Visible text of an element, including text rendered inside its shadow root.
+  function deepText(el) {
+    if (!el) return '';
+    let t = '';
+    const visit = node => {
+      for (const c of node.childNodes) {
+        if (c.nodeType === 3) t += c.data + ' ';
+        else if (c.nodeType === 1 && !/^(STYLE|SCRIPT)$/.test(c.tagName)) visit(c);
+      }
+      if (node.shadowRoot) visit(node.shadowRoot);
+    };
+    visit(el);
+    return `${el.getAttribute?.('aria-label') || ''} ${t}`.replace(/\s+/g, ' ').trim();
+  }
+
+  const visible = el => el && el.getClientRects().length > 0;
+
   const isChecked = el => {
     if (!el) return null;
-    const a = el.getAttribute('aria-checked') ?? el.querySelector('[aria-checked]')?.getAttribute('aria-checked');
+    const a = el.getAttribute('aria-checked') ?? deep('[aria-checked]', el.shadowRoot || el)?.getAttribute('aria-checked');
     if (a != null) return a === 'true';
     return el.hasAttribute('checked') || el.checked === true;
   };
-  const labelOf = el => `${el.getAttribute('aria-label') || ''} ${el.innerText || ''}`.replace(/\s+/g, ' ').trim();
 
-  const RADIO = 'tp-yt-paper-radio-button, [role="radio"], input[type="radio"]';
-  const CHECKBOX = 'ytcp-checkbox-lit, tp-yt-paper-checkbox, [role="checkbox"], input[type="checkbox"]';
+  const RADIO = 'tp-yt-paper-radio-button, ytcp-radio-button, [role="radio"], input[type="radio"]';
+  const CHECKBOX = 'ytcp-checkbox-lit, tp-yt-paper-checkbox, ytcp-checkbox, [role="checkbox"], input[type="checkbox"]';
+  const GROUP = 'tp-yt-paper-radio-group, ytcp-radio-group, [role="radiogroup"]';
+  // Avoid a role="radio" inside a tp-yt-paper-radio-button being counted twice.
+  const radios = root => deepAll(RADIO, root).filter(r => !r.parentElement?.closest?.('tp-yt-paper-radio-button, ytcp-radio-button'));
+
+  const YES = /^(oui|yes)\b/i, NO = /^(non|no)\b/i;
 
   function kidsRadio(yes) {
-    const byName = document.querySelector(`tp-yt-paper-radio-button[name="${yes ? 'VIDEO_MADE_FOR_KIDS_MFK' : 'VIDEO_MADE_FOR_KIDS_NOT_MFK'}"]`);
+    const byName = deep(`[name="${yes ? 'VIDEO_MADE_FOR_KIDS_MFK' : 'VIDEO_MADE_FOR_KIDS_NOT_MFK'}"]`);
     if (byName) return byName;
-    const re = yes ? /^(oui|yes)\b.*(enfant|kids)/i : /^(non|no)\b.*(enfant|kids)/i;
-    return [...document.querySelectorAll(RADIO)].find(r => re.test(labelOf(r)) && !r.closest('#video-boost-root')) || null;
+    const kids = /enfant|kids|children/i;
+    return radios().find(r => { const t = deepText(r); return (yes ? YES : NO).test(t) && kids.test(t); }) || null;
   }
 
   function paidPromoBox() {
-    const re = /paid promotion|promotion pay|communication commerciale|placement de produit|product placement|sponsor/i;
-    return [...document.querySelectorAll(CHECKBOX)].find(c => re.test(labelOf(c)) || re.test(labelOf(c.parentElement || c))) || null;
+    const re = /paid promotion|promotion pay|communication commerciale|placement de produit|product placement|parrainage|sponsor/i;
+    return deepAll(CHECKBOX).filter(c => !c.parentElement?.closest?.('ytcp-checkbox-lit, tp-yt-paper-checkbox'))
+      .find(c => re.test(deepText(c)) || re.test(deepText(c.parentElement))) || null;
   }
 
-  // The altered/synthetic content question is a Yes/No radio group under a heading that mentions it.
+  // The altered/synthetic question is a plain Yes/No group under a heading that mentions it.
+  const ALTERED = /altered|synthetic|synth[ée]tique|contenu (modifi|alt[ée]r)|modifi[ée] ou synth|r[ée]aliste|g[ée]n[ée]r[ée]|\bIA\b|\bAI\b/i;
   function alteredRadio(yes) {
-    const heading = /altered content|synthetic|contenu (modifi|alt[ée]r|synth[ée]tique)|g[ée]n[ée]r[ée] par (l'|l’)?ia/i;
-    const GROUP = 'tp-yt-paper-radio-group, [role="radiogroup"]';
-    // Walk up from each group while the ancestor holds only this group, and look for the heading there.
-    const underHeading = g => {
-      for (let a = g.parentElement, n = 0; a && n < 6; a = a.parentElement, n++) {
-        if (a.querySelectorAll(GROUP).length > 1) return false;
-        if (heading.test((a.innerText || '').slice(0, 800))) return true;
+    const byName = deepAll(RADIO).find(r => /ALTER|SYNTH/i.test(r.getAttribute('name') || '') && (yes ? /YES|TRUE|_ALTERED$/i : /NO|FALSE|NOT/i).test(r.getAttribute('name')));
+    if (byName) return byName;
+    for (const g of deepAll(GROUP)) {
+      const rs = radios(g);
+      if (rs.some(r => /enfant|kids/i.test(deepText(r)) || /MADE_FOR_KIDS/.test(r.getAttribute('name') || ''))) continue;
+      // Walk up while the ancestor holds only this group; the heading must be found there.
+      let found = false;
+      for (let a = g.parentElement, n = 0; a && n < 6 && !found; a = a.parentElement, n++) {
+        if (a.querySelectorAll(GROUP).length > 1) break;
+        found = ALTERED.test(deepText(a).slice(0, 1200));
       }
-      return false;
-    };
-    const groups = [...document.querySelectorAll(GROUP)]
-      .filter(g => !g.closest('#video-boost-root') && !g.querySelector('[name*="MADE_FOR_KIDS"]'))
-      .filter(underHeading);
-    for (const g of groups) {
-      const r = [...g.querySelectorAll(RADIO)].find(x => (yes ? /^(oui|yes)\b/i : /^(non|no)\b/i).test(labelOf(x)));
+      if (!found) continue;
+      const r = rs.find(x => (yes ? YES : NO).test(deepText(x)));
       if (r) return r;
     }
     return null;
   }
 
+  const CATEGORY_TRIGGER = '#category ytcp-dropdown-trigger, ytcp-form-select#category, #category';
+  function categoryField() {
+    const byId = deep(CATEGORY_TRIGGER);
+    if (byId) return byId;
+    // Fallback: a select-like control whose label reads "Catégorie" / "Category".
+    return deepAll('ytcp-form-select, ytcp-dropdown-trigger, ytcp-select')
+      .find(el => /^\s*(cat[ée]gorie|category)\b/i.test(deepText(el))) || null;
+  }
+  function categoryText() {
+    const f = categoryField();
+    if (!f) return '';
+    const inner = deep('.dropdown-trigger-text', f.shadowRoot || f) || deep('.dropdown-trigger-text', f);
+    const t = inner ? deepText(inner) : deepText(f).replace(/^\s*(cat[ée]gorie|category)\s*/i, '');
+    return t.split(/\s{2,}|\n/)[0].trim();
+  }
+
   function readParams() {
-    const cat = text($(SEL.category)).split('\n')[0] || '';
+    const cat = categoryText();
     const kidsYes = kidsRadio(true), kidsNo = kidsRadio(false);
     const altYes = alteredRadio(true), altNo = alteredRadio(false);
     return {
@@ -261,43 +326,103 @@
     };
   }
 
-  function setMadeForKids(yes) {
-    const r = kidsRadio(yes);
-    if (!r) throw new Error('Choix « conçue pour les enfants » introuvable.');
-    r.click();
+  // Polymer radios listen to "tap"/click on the host; clicking the inner radio circle is the fallback.
+  function clickControl(el) {
+    el.scrollIntoView?.({ block: 'center' });
+    el.click();
+    if (isChecked(el) === false) (deep('#radioContainer, #checkboxContainer, [role="radio"], [role="checkbox"]', el.shadowRoot || el) || el).click();
+  }
+
+  async function withMore(find) {
+    let el = find();
+    if (!el) { await ensureTagsVisible().catch(() => {}); rootsCache.at = 0; el = find(); }
+    return el;
+  }
+
+  async function setMadeForKids(yes) {
+    const r = await withMore(() => kidsRadio(yes));
+    if (!r) throw new Error('Choix « conçue pour les enfants » introuvable (Réglages → Avancé → Diagnostic).');
+    if (isChecked(r) !== true) clickControl(r);
   }
 
   async function setPaidPromo(on) {
-    let box = paidPromoBox();
-    if (!box) { await ensureTagsVisible().catch(() => {}); box = paidPromoBox(); }
-    if (!box) throw new Error('Case « promotion payée » introuvable (section Afficher plus).');
+    const box = await withMore(paidPromoBox);
+    if (!box) throw new Error('Case « promotion payée » introuvable (Réglages → Avancé → Diagnostic).');
     if (isChecked(box) !== on) box.click();
   }
 
   async function setAltered(yes) {
-    let r = alteredRadio(yes);
-    if (!r) { await ensureTagsVisible().catch(() => {}); r = alteredRadio(yes); }
-    if (!r) throw new Error('Question « contenu modifié / IA » introuvable.');
-    r.click();
+    const r = await withMore(() => alteredRadio(yes));
+    if (!r) throw new Error('Question « contenu modifié / IA » introuvable (Réglages → Avancé → Diagnostic).');
+    if (isChecked(r) !== true) clickControl(r);
   }
 
   // Opens Studio's category dropdown and clicks the option matching our index.
   async function setCategory(index) {
     const want = CATEGORIES[index];
     if (!want) throw new Error('Catégorie inconnue.');
-    let trigger = document.querySelector('#category ytcp-dropdown-trigger, ytcp-form-select#category, #category');
-    if (!trigger) { await ensureTagsVisible().catch(() => {}); trigger = document.querySelector('#category ytcp-dropdown-trigger, ytcp-form-select#category, #category'); }
-    if (!trigger) throw new Error('Menu catégorie introuvable (section Afficher plus).');
-    trigger.click();
+    const trigger = await withMore(categoryField);
+    if (!trigger) throw new Error('Menu catégorie introuvable (Réglages → Avancé → Diagnostic).');
     const targets = want.map(norm);
-    for (let i = 0; i < 20; i++) {
+    trigger.scrollIntoView?.({ block: 'center' });
+    (deep('ytcp-dropdown-trigger, [role="button"], #container', trigger.shadowRoot || trigger) || trigger).click();
+    for (let i = 0; i < 25; i++) {
       await new Promise(r => setTimeout(r, 80));
-      const opt = [...document.querySelectorAll('tp-yt-paper-item, [role="option"], ytcp-ve[role="option"]')]
-        .find(o => o.offsetParent !== null && targets.includes(norm(o.innerText)));
+      rootsCache.at = 0; // the dropdown popup is created on open
+      const opt = deepAll('tp-yt-paper-item, ytcp-text-menu tp-yt-paper-item, [role="option"], [role="menuitem"], [role="menuitemradio"]')
+        .find(o => visible(o) && targets.includes(norm(deepText(o))));
       if (opt) { opt.click(); return; }
     }
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    throw new Error(`Option « ${want[0]} » introuvable dans le menu.`);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+    throw new Error(`Option « ${want[0]} » introuvable dans le menu catégorie.`);
+  }
+
+  /* ---------- Save ---------- */
+  function saveButton() {
+    return deep('ytcp-button#save, #save-button, ytcp-button[id="save"]') ||
+      deepAll('ytcp-button, button').find(b => /^(enregistrer|save)$/i.test(deepText(b)) && visible(b)) || null;
+  }
+  const isDisabled = b => b.hasAttribute('disabled') || b.getAttribute('aria-disabled') === 'true';
+
+  // Clicks Studio's own Save button (only ever called from the panel's Enregistrer button).
+  async function save() {
+    const b = saveButton();
+    if (!b) throw new Error('Bouton Enregistrer de Studio introuvable.');
+    if (isDisabled(b)) return 'nothing';
+    (deep('button', b.shadowRoot || b) || b).click();
+    for (let i = 0; i < 40; i++) {
+      await new Promise(r => setTimeout(r, 150));
+      if (isDisabled(b) || !b.isConnected) return 'saved';
+    }
+    return 'pending';
+  }
+
+  /* ---------- Diagnostic: what the extension sees, to fix selectors on a real page ---------- */
+  function diagnose() {
+    const brief = el => ({
+      tag: el.tagName.toLowerCase(),
+      id: el.id || undefined,
+      name: el.getAttribute('name') || undefined,
+      checked: isChecked(el),
+      shadow: el.getRootNode() !== document || undefined,
+      text: deepText(el).slice(0, 80)
+    });
+    const p = readParams();
+    return {
+      url: location.pathname,
+      found: {
+        title: !!$(SEL.title), description: !!$(SEL.description), tags: !!tagsContainer(),
+        kidsYes: !!kidsRadio(true), kidsNo: !!kidsRadio(false), paidPromo: !!paidPromoBox(),
+        alteredYes: !!alteredRadio(true), alteredNo: !!alteredRadio(false), category: !!categoryField(), save: !!saveButton()
+      },
+      params: p,
+      radios: radios().slice(0, 20).map(brief),
+      groups: deepAll(GROUP).slice(0, 8).map(g => ({ tag: g.tagName.toLowerCase(), id: g.id || undefined, context: deepText(g.parentElement?.parentElement).slice(0, 160) })),
+      checkboxes: deepAll(CHECKBOX).slice(0, 12).map(brief),
+      selects: deepAll('ytcp-form-select, ytcp-dropdown-trigger, ytcp-select').slice(0, 10).map(brief),
+      saveCandidates: deepAll('ytcp-button, button').filter(b => /enregistrer|save/i.test(deepText(b))).slice(0, 5).map(brief),
+      vidiq: readVidiq().text.slice(0, 400)
+    };
   }
 
   /* ---------- vidIQ score (used by the title tester) ----------
@@ -362,7 +487,7 @@
 
   window.VBStudio = {
     read, videoId, setTitle, setDescription, appendHashtags, addTags, removeTag, ensureTagsVisible, tagCost, tagsLength, cleanTag, LIMITS,
-    CATEGORIES, categoryIndex, readParams, setMadeForKids, setPaidPromo, setAltered, setCategory,
+    CATEGORIES, categoryIndex, readParams, setMadeForKids, setPaidPromo, setAltered, setCategory, save, saveButton, diagnose,
     readVidiq, readVidiqScore, channelId, readContentRows
   };
 })();

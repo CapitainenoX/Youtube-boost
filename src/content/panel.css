@@ -277,6 +277,9 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 .ratio.hi { color: var(--ok); }
 .ratio.lo { color: var(--warn); }
 
+.head .btn.sm { height: 28px; padding: 0 10px; }
+.diag { max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 8px 10px; background: var(--surface); border-radius: 8px; font: 11px/1.4 "Roboto Mono", ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

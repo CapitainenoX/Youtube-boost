@@ -24,7 +24,9 @@ Fournisseur IA (Groq, Gemini, OpenRouter, OpenAI, Mistral), clé, modèle (*Test
 ## Testeur de titres
 L'IA propose des titres. Chacun est tapé dans le vrai champ Studio, vidIQ le note, et le test continue jusqu'à obtenir **100** ou un titre **meilleur que l'actuel** (3 tours max, réglable). Le meilleur titre reste dans le champ, sinon le titre d'origine est remis. Rien n'est enregistré. Sans vidIQ, un score local transparent le remplace (longueur, mot-clé, chiffre, accroche). Si le score vidIQ n'est pas lu, indique son sélecteur CSS dans Réglages → Avancé.
 
-Rien n'est écrit dans Studio sans ton clic, et rien n'est enregistré sans le bouton **Enregistrer** de Studio.
+Rien n'est écrit dans Studio sans ton clic. Le bouton **Enregistrer** en haut du panel clique sur celui de Studio ; rien n'est enregistré sans lui.
+
+Si un paramètre est « introuvable » sur ta page : Réglages → Avancé → **Diagnostic Studio** copie ce que l'extension voit, à envoyer pour corriger les sélecteurs.
 
 ## Installation (PowerShell)
 

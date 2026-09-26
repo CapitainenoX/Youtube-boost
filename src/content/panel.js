@@ -91,7 +91,8 @@
     lastVideoSnap: '',
     models: [],
     tester: null,      // title tester run
-    testerCtrl: null
+    testerCtrl: null,
+    diagOpen: false
   };
 
   /* ---------- Mount ---------- */
@@ -106,6 +107,7 @@
       <div class="head">
         <div class="brand"><span class="mark">${icon('zap')}</span>Video Boost</div>
         <span class="model" data-ref="model"></span>
+        <button class="btn sm primary" data-action="save" data-ref="saveBtn" title="Clique sur Enregistrer dans Studio">Enregistrer</button>
         <button class="icon-btn" data-action="my-videos" data-ref="videosBtn" title="Mes vidéos" aria-label="Mes vidéos">${icon('list')}</button>
         <button class="icon-btn" data-action="close" title="Fermer (Alt+B)" aria-label="Fermer">${icon('x')}</button>
       </div>
@@ -217,6 +219,7 @@
     panel.hidden = !state.open;
     launcher.hidden = state.open;
     ref('videosBtn').hidden = state.mode !== 'edit';
+    ref('saveBtn').hidden = state.mode !== 'edit';
   }
 
   function renderTabs() {
@@ -385,11 +388,11 @@
         S.setTitle(p.titles[k]);
         [...u.applied].filter(x => x.startsWith('title:')).forEach(x => u.applied.delete(x));
         u.applied.add(`title:${k}`);
-        toast('Titre appliqué · pense à Enregistrer');
+        toast('Titre appliqué · clique Enregistrer');
       } else if (kind === 'description') {
         S.setDescription(p.description);
         u.applied.add('description');
-        toast('Description remplacée · pense à Enregistrer');
+        toast('Description remplacée · clique Enregistrer');
       } else if (kind === 'hashtags') {
         const n = S.appendHashtags(p.hashtags);
         u.applied.add('hashtags');
@@ -397,13 +400,13 @@
       } else if (kind === 'category') {
         await S.setCategory(S.categoryIndex(p.category));
         u.applied.add('category');
-        toast('Catégorie appliquée · pense à Enregistrer');
+        toast('Catégorie appliquée · clique Enregistrer');
       } else if (kind === 'tags') {
         await S.ensureTagsVisible();
         const plan = tagPlan(p, i, S.read().tags || []);
         const { added, skipped } = await S.addTags(plan.chosen);
         u.applied.add('tags');
-        toast(`${added.length} tag${added.length > 1 ? 's' : ''} ajouté${added.length > 1 ? 's' : ''}${skipped.length ? ` · ${skipped.length} hors limite` : ''} · pense à Enregistrer`);
+        toast(`${added.length} tag${added.length > 1 ? 's' : ''} ajouté${added.length > 1 ? 's' : ''}${skipped.length ? ` · ${skipped.length} hors limite` : ''} · clique Enregistrer`);
       } else if (kind === 'all') {
         // Description first, then hashtags appended to it, then title and tags.
         if (p.description && !u.applied.has('description')) { S.setDescription(p.description); u.applied.add('description'); }
@@ -414,7 +417,7 @@
           await S.addTags(tagPlan(p, i, S.read().tags || []).chosen);
           u.applied.add('tags');
         }
-        toast('Tout est appliqué · pense à Enregistrer');
+        toast('Tout est appliqué · clique Enregistrer');
       }
     } catch (e) {
       toast(e.message || String(e), true);
@@ -617,7 +620,7 @@
       if (name === 'kids') S.setMadeForKids(yes);
       if (name === 'promo') await S.setPaidPromo(yes);
       if (name === 'altered') await S.setAltered(yes);
-      toast('Paramètre modifié · pense à Enregistrer');
+      toast('Paramètre modifié · clique Enregistrer');
     } catch (e) { toast(e.message, true); }
     setTimeout(() => renderVideo(true), 250);
   }
@@ -630,7 +633,7 @@
     await step(() => S.setPaidPromo(p.paidPromo));
     await step(() => S.setAltered(p.altered));
     if (p.category >= 0) await step(() => S.setCategory(p.category));
-    toast(errors.length ? errors[0] : 'Préférences appliquées · pense à Enregistrer', !!errors.length);
+    toast(errors.length ? errors[0] : 'Préférences appliquées · clique Enregistrer', !!errors.length);
     setTimeout(() => renderVideo(true), 300);
   }
 
@@ -650,6 +653,19 @@
     });
     state.testerCtrl = null;
     if (state.view === 'video') renderVideo(true);
+  }
+
+  // Explicit user click → clicks Studio's own Save button.
+  async function saveStudio(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Enregistrement…';
+    try {
+      const r = await S.save();
+      toast(r === 'nothing' ? 'Rien à enregistrer' : r === 'saved' ? 'Enregistré dans Studio' : 'Enregistrement envoyé, vérifie Studio');
+    } catch (e) { toast(e.message, true); }
+    btn.disabled = false;
+    btn.textContent = 'Enregistrer';
+    setTimeout(() => state.view === 'video' && renderVideo(true), 300);
   }
 
   /* ---------- Vidéos (channel list, stats, video picker) ---------- */
@@ -818,8 +834,14 @@
         <button class="switch" role="switch" aria-checked="${s.showOnYoutube}" data-toggle="showOnYoutube" aria-label="Afficher sur youtube.com"></button>
       </div>
 
-      <details class="adv">
+      <details class="adv" ${state.diagOpen ? 'open' : ''}>
         <summary>Avancé</summary>
+        <div class="field" style="margin-top:12px">
+          <div class="label">Diagnostic Studio</div>
+          <button class="btn sm" data-action="diagnose" ${state.mode === 'edit' ? '' : 'disabled'}>${icon('eye')}Copier ce que l’extension voit</button>
+          <div class="help">${state.mode === 'edit' ? 'Si un paramètre est « introuvable », clique ici et envoie le texte copié pour que les sélecteurs soient corrigés.' : 'Disponible sur la page d’une vidéo.'}</div>
+          <pre class="diag" data-ref="diagOut" hidden></pre>
+        </div>
         <div class="field" style="margin-top:12px">
           <div class="label">Tours du testeur de titres <span class="count" data-ref="roundsVal">${s.testerRounds}</span></div>
           <input type="range" min="1" max="5" step="1" value="${s.testerRounds}" data-ref="rounds">
@@ -893,11 +915,18 @@
       case 'desc-toggle': state.descOpen = !state.descOpen; return renderVideo(true);
       case 'show-tags': return S.ensureTagsVisible().then(() => renderVideo(true), err => toast(err.message, true));
       case 'apply-prefs': return applyPrefs();
+      case 'save': return saveStudio(t);
+      case 'diagnose': {
+        const report = JSON.stringify(S.diagnose(), null, 1);
+        ref('diagOut').hidden = false;
+        ref('diagOut').textContent = report;
+        return copy(report);
+      }
       case 'tester-start': return startTester();
       case 'tester-stop': return state.testerCtrl?.abort();
       case 'tester-apply':
         S.setTitle(d.text);
-        toast('Titre appliqué · pense à Enregistrer');
+        toast('Titre appliqué · clique Enregistrer');
         return setTimeout(() => renderVideo(true), 100);
       case 'copy': {
         const ctx = S.read();
@@ -930,6 +959,8 @@
         return;
     }
   });
+
+  root.addEventListener('toggle', e => { if (e.target.classList?.contains('adv')) state.diagOpen = e.target.open; }, true);
 
   root.addEventListener('submit', e => {
     if (e.target.dataset.ref !== 'pickForm') return;
@@ -978,7 +1009,7 @@
     if (r === 'prefCat') { state.settings.prefs = { ...state.settings.prefs, category: Number(e.target.value) }; saveSettings(); }
     if (r === 'catSelect' && Number(e.target.value) >= 0) {
       S.setCategory(Number(e.target.value))
-        .then(() => toast('Catégorie modifiée · pense à Enregistrer'), err => toast(err.message, true))
+        .then(() => toast('Catégorie modifiée · clique Enregistrer'), err => toast(err.message, true))
         .finally(() => setTimeout(() => renderVideo(true), 250));
     }
     if (r === 'key' && e.target.value.trim()) { e.target.value = ''; renderSettings(); toast('Clé enregistrée'); }

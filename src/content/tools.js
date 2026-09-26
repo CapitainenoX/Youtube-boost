@@ -89,7 +89,7 @@
       }
       run.status = run.best.original
         ? 'Aucun titre ne bat l’actuel : titre d’origine remis.'
-        : `Meilleur titre appliqué (${run.best.score}/100) · pense à Enregistrer.`;
+        : `Meilleur titre appliqué (${run.best.score}/100) · clique Enregistrer.`;
     } catch (e) {
       run.status = e.name === 'AbortError' ? 'Test arrêté.' : e.message;
       run.error = e.name !== 'AbortError';

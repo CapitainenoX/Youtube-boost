@@ -88,16 +88,23 @@ const assert = (cond, msg) => { if (!cond) { console.error('✗', msg); process.
   await page.waitForTimeout(300);
   await vb('[data-action="apply-prefs"]').click();
   await page.waitForTimeout(800);
-  const params = await page.evaluate(() => ({
-    kidsNo: document.querySelector('[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]').getAttribute('aria-checked'),
-    promo: document.querySelector('ytcp-checkbox-lit').getAttribute('aria-checked'),
-    altYes: document.querySelector('#altered tp-yt-paper-radio-button').getAttribute('aria-checked'),
-    cat: document.querySelector('#category .dropdown-trigger-text').textContent
-  }));
+  const params = await page.evaluate(() => {
+    const sr = t => document.querySelector(t).shadowRoot;
+    const rb = (t, k) => sr(t).querySelectorAll('tp-yt-paper-radio-button')[k].getAttribute('aria-checked');
+    return {
+      kidsNo: rb('mock-audience', 1),
+      promo: sr('mock-promo').querySelector('ytcp-checkbox-lit').getAttribute('aria-checked'),
+      altYes: rb('mock-altered', 0),
+      cat: sr('mock-category').querySelector('.dropdown-trigger-text').textContent
+    };
+  });
   assert(params.kidsNo === 'true' && params.promo === 'true' && params.altYes === 'true' && params.cat === 'Jeux vidéo', `prefs applied ${JSON.stringify(params)}`);
   await vb('[data-ref="catSelect"]').selectOption('12');
   await page.waitForTimeout(600);
-  assert(await page.locator('#category .dropdown-trigger-text').textContent() === 'Éducation', 'category changed from the panel');
+  assert(await page.evaluate(() => document.querySelector('mock-category').shadowRoot.querySelector('.dropdown-trigger-text').textContent) === 'Éducation', 'category changed from the panel');
+  await vb('[data-action="save"]').click();
+  await page.waitForTimeout(800);
+  assert(await page.evaluate(() => window.__saved === true), 'Enregistrer button clicked Studio save');
 
   /* Title tester (vidIQ mock score) */
   await vb('[data-action="tester-start"]').click();
