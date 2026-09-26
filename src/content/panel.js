@@ -133,6 +133,24 @@
   const panel = root.querySelector('.panel');
   const launcher = root.querySelector('.launcher');
 
+  /* ---------- Extension reloaded while the page stayed open ----------
+   * After ↻ in chrome://extensions, this old copy of the script keeps running but every chrome.* call throws
+   * "Extension context invalidated". Detect it, stop the watcher and offer a page reload instead of throwing. */
+  let watcher = 0;
+  const alive = () => { try { return !!chrome.runtime?.id; } catch { return false; } };
+  function orphaned() {
+    if (alive()) return false;
+    clearInterval(watcher);
+    state.stream = null;
+    state.testerCtrl?.abort();
+    panel.hidden = true;
+    launcher.hidden = host.hidden;
+    launcher.dataset.action = 'reload';
+    launcher.title = 'Video Boost a été mis à jour : recharge la page';
+    launcher.innerHTML = `${icon('refresh')}<span>Recharger Video Boost</span>`;
+    return true;
+  }
+
   let toastTimer;
   function toast(msg, isErr = false) {
     clearTimeout(toastTimer);
@@ -207,6 +225,7 @@
   }
 
   async function setOpen(open) {
+    if (orphaned()) return;
     state.open = open;
     chrome.storage.local.set({ [`open:${state.mode}`]: open });
     applyVisibility();
@@ -882,6 +901,8 @@
   root.addEventListener('click', e => {
     const t = e.target.closest('button, a');
     if (!t) return;
+    if (t.dataset.action === 'reload') return location.reload();
+    if (orphaned()) return;
     const d = t.dataset;
     const i = d.i !== undefined ? Number(d.i) : null;
 
@@ -1037,7 +1058,7 @@
   ['keydown', 'keyup', 'keypress'].forEach(t => root.addEventListener(t, e => e.stopPropagation()));
 
   document.addEventListener('keydown', e => {
-    if (e.altKey && e.code === 'KeyB' && !host.hidden) { e.preventDefault(); setOpen(!state.open); }
+    if (e.altKey && e.code === 'KeyB' && !host.hidden) { e.preventDefault(); if (!orphaned()) setOpen(!state.open); }
   }, true);
   chrome.runtime.onMessage.addListener(msg => {
     if (msg?.type === 'toggle' && state.mode) {
@@ -1048,6 +1069,13 @@
 
   /* ---------- Page watcher (Studio and YouTube are single-page apps) ---------- */
   async function tick() {
+    if (orphaned()) return;
+    try { await watch(); } catch (e) {
+      if (!orphaned()) console.warn('[Video Boost]', e);
+    }
+  }
+
+  async function watch() {
     host.dataset.theme = document.documentElement.hasAttribute('dark') ? 'dark' : 'light';
 
     // Studio URLs under /channel/UC… belong to the signed-in creator: remember the channel.
@@ -1091,6 +1119,6 @@
   loadSettings().then(() => {
     renderModelLabel();
     tick();
-    setInterval(tick, 800);
+    watcher = setInterval(tick, 800);
   });
 })();

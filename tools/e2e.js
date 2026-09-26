@@ -146,5 +146,14 @@ const assert = (cond, msg) => { if (!cond) { console.error('✗', msg); process.
   await page.waitForTimeout(1000);
   await shot('y1-watch-dark.png');
 
+  /* Extension reloaded while the tab stays open (↻ in chrome://extensions) */
+  const [sw] = ctx.serviceWorkers();
+  await sw.evaluate(() => chrome.runtime.reload()).catch(() => {});
+  await page.waitForTimeout(1500);
+  await page.keyboard.press('Alt+KeyB');
+  await page.waitForTimeout(1000);
+  const label = await vb('.launcher').innerText().catch(() => '');
+  assert(/Recharger/.test(label), `stale script after extension reload shows « ${label.trim()} » instead of throwing`);
+
   await ctx.close();
 })().catch(e => { console.error(e); process.exit(1); });
