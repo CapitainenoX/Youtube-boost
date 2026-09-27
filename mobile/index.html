@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#121212">
+  <title>Video Boost</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <button class="brand" data-go="home" aria-label="Accueil"><span class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>Video Boost</button>
+    <button class="icon-btn" data-go="settings" aria-label="Réglages"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg></button>
+  </header>
+  <main id="app" aria-live="polite"></main>
+  <div id="toast" role="status"></div>
+  <script src="../src/shared/providers.js"></script>
+  <script>
+    // ai.js expects the Studio adapter's tag helpers; the mobile app provides the same ones.
+    window.VBStudio = {
+      cleanTag: t => String(t || '').replace(/^#/, '').replace(/[<>,"]/g, ' ').replace(/\s+/g, ' ').trim(),
+      tagsLength: tags => tags.reduce((n, t) => n + t.length + (/\s/.test(t) ? 2 : 0), 0) + Math.max(0, tags.length - 1)
+    };
+  </script>
+  <script src="../src/content/ai.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async></script>
+  <script src="app.js"></script>
+</body>
+</html>

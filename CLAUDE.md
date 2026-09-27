@@ -7,9 +7,11 @@
 - `src/content/tools.js` — one-shot `ask()`, title tester, local title score (`window.VBTools`).
 - `src/content/ai.js` — system prompt + parsing of the ```boost JSON block (`window.VBAI`).
 - `src/content/panel.js` / `panel.css` — shadow-DOM panel, modes `edit` (video edit page) and `global` (rest of Studio + youtube.com); style contract at top of panel.css.
-- Test: `PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1 node tools/e2e.js` (mock Studio/YouTube pages in `tools/mock-*`, mocked Groq + RSS).
+- `mobile/` — Android PWA (share target → AI → YouTube Data API `videos.update`). Reuses `src/shared/providers.js` and `src/content/ai.js` (with a `VBStudio` tag-helper shim). Served from GitHub Pages at the repo root.
+- Test: `PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1 node tools/e2e.js` (mock Studio/YouTube pages in `tools/mock-*`, mocked Groq + RSS) · mobile: `node tools/e2e-mobile.js`.
 
 ## Never
+- Call `videos.update` without re-reading the video first: snippet/status parts are replaced whole, omitted fields get wiped.
 - Write to Studio without an explicit user click.
 - Send the API key from the content script or show it back in the UI.
 - Save in Studio without a click on the panel's « Enregistrer » button (`VBStudio.save()` is only called from it).

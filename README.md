@@ -47,3 +47,17 @@ Ensuite : **Mode développeur** → **Charger l'extension non empaquetée** → 
 - Pas de build : HTML/CSS/JS vanilla.
 - `node tools/make-icons.js` : régénère les icônes.
 - `PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1 node tools/e2e.js` : charge l'extension dans Chromium sur de fausses pages Studio / YouTube (`tools/mock-*`) avec une IA simulée et vérifie tous les parcours.
+
+## App mobile (Android) — `mobile/`
+
+Web app installable (PWA) : tu mets en ligne dans l'app YouTube comme d'habitude, puis **Partager → Video Boost**. L'IA propose le titre, les tags (ajoutés à la suite des tags existants), la description, les hashtags, la catégorie, « conçue pour les enfants » et « contenu IA ». Un tap sur **Appliquer sur YouTube** écrit tout sur la vidéo via l'API officielle YouTube Data v3 (`videos.update`). Le résultat est visible dans YouTube Studio.
+
+### Mise en ligne (une fois)
+1. GitHub → repo → **Settings → Pages** → Source : *Deploy from a branch* → branche `claude/eloquent-dijkstra-74js81`, dossier `/ (root)`.
+2. L'app est ensuite sur `https://capitainenox.github.io/Youtube-boost/mobile/`.
+3. Sur le téléphone, ouvre ce lien dans Chrome → ⋮ → **Installer l'application**. « Video Boost » apparaît alors dans le menu Partager d'Android.
+4. Dans l'app → Réglages : clé IA (Groq ou Gemini) et **Client ID Google**. Les étapes pour l'obtenir sont dans l'app (projet Google Cloud, YouTube Data API v3, ID client OAuth « Application Web » avec l'origine `https://capitainenox.github.io`, ton Gmail en utilisateur test).
+
+La clé IA et les réglages restent dans le téléphone. Le jeton Google reste en mémoire, jamais stocké. Rien n'est envoyé à YouTube sans le tap sur *Appliquer*.
+
+Test : `node tools/e2e-mobile.js` (fausses API Google/YouTube/Groq, écran Pixel 7).
