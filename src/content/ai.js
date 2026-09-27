@@ -2,9 +2,19 @@
  * The model answers in short prose plus one fenced ```boost JSON block; the panel turns that block
  * into approve-able cards (titles, description, tags, hashtags). */
 (function () {
+  // Language of titles and descriptions. 'Auto' = English, unless the video itself is set to another
+  // language (Studio's "Langue de la vidéo" / the API's defaultAudioLanguage), then that language.
+  function contentLang(settings, ctx) {
+    const pick = settings.contentLang && settings.contentLang !== 'Auto' ? settings.contentLang : '';
+    if (pick) return pick;
+    const v = String(ctx?.language || '').trim();
+    return v && !/^(en|english|anglais)\b/i.test(v) ? v : 'English';
+  }
+
   function systemPrompt(ctx, settings, channel) {
+    const lang = contentLang(settings, ctx);
     const tagLang = settings.tagMode === 'mixed'
-      ? `mostly English, plus 2–4 tags in ${settings.contentLang} if the audience speaks it`
+      ? `mostly English, plus 2–4 tags in ${lang} if the audience speaks it`
       : 'English only';
     const vidiq = settings.useVidiq && ctx.vidiq?.detected && ctx.vidiq.text
       ? `\n\nvidIQ DATA (scraped from the vidIQ extension on this page — use it: favour keywords with high search volume / high overall score and low competition, reuse its category signals, never copy low-score tags):\n"""\n${ctx.vidiq.text}\n"""`
@@ -15,14 +25,15 @@ Goal: maximise search + browse + suggested reach for THIS ${ctx.isShort ? 'YouTu
 
 CURRENT VIDEO
 - Format: ${ctx.isShort ? 'Short (vertical, < 3 min)' : 'long-form video'}
+- Video language: ${ctx.language || 'not set'} → write titles and descriptions in ${lang}
 - Title: ${ctx.title || '(empty)'}
 - Description: ${ctx.description ? ctx.description.slice(0, 1800) : '(empty)'}
 - Existing tags: ${ctx.tags?.length ? ctx.tags.join(', ') : '(none)'}
 - Category: ${ctx.category || 'unknown'}${vidiq}${channelBlock(channel)}
 
 RULES
-- Titles: in ${settings.contentLang}, ≤ 70 characters (hard max 100), main keyword in the first 40 characters, a clear hook or benefit, no ALL CAPS, max one emoji. Give 3 distinct angles.
-- Description: in ${settings.contentLang}. First 150 characters = hook + main keyword (what shows in search). Then 2–4 short paragraphs of value, natural keywords, a call to action. No fake links, no placeholders like [LINK].
+- Titles: in ${lang}, ≤ 70 characters (hard max 100), main keyword in the first 40 characters, a clear hook or benefit, no ALL CAPS, max one emoji. Give 3 distinct angles.
+- Description: in ${lang}. First 150 characters = hook + main keyword (what shows in search). Then 2–4 short paragraphs of value, natural keywords, a call to action. No fake links, no placeholders like [LINK].
 - Tags: ${tagLang}. 12–20 tags, each 1–3 words, lowercase, short and high-impact for the algorithm: exact main keyword first, then close variants, then specific long-tail, then 2–3 broad niche tags. No '#', no duplicates, nothing already in "Existing tags", total under 400 characters.
 - Hashtags: 3–5, CamelCase or lowercase, relevant and searchable; the first 3 appear above the title.${ctx.isShort ? ' Include #shorts.' : ''}
 - Category: if the current one looks wrong, suggest exactly one of: Film & Animation, Autos & Vehicles, Music, Pets & Animals, Sports, Travel & Events, Gaming, People & Blogs, Comedy, Entertainment, News & Politics, Howto & Style, Education, Science & Technology, Nonprofits & Activism.
@@ -53,7 +64,7 @@ Include only the keys the user asked for (all of them for a full optimisation). 
 Use ONLY the data below for numbers: never invent views, CTR, retention or trends you cannot see. When data is missing, say which Studio page to look at.
 When asked "what works": compare views per video vs the channel median, contrast Shorts vs long videos, spot title patterns (length, numbers, words, format) of the top performers, then give 3 actionable next steps.${channelBlock(ch)}${w}
 
-If you propose tags, titles or hashtags, you may end with a \`\`\`boost JSON block like: {"titles": [...], "tags": [...], "hashtags": [...]}. Tags: English, lowercase, 1–3 words. Content language for titles: ${settings.contentLang}.`;
+If you propose tags, titles or hashtags, you may end with a \`\`\`boost JSON block like: {"titles": [...], "tags": [...], "hashtags": [...]}. Tags: English, lowercase, 1–3 words. Content language for titles: ${contentLang(settings, watched)}.`;
   }
 
   // The title tester asks for plain JSON: {"titles": [...]}.
@@ -63,7 +74,7 @@ If you propose tags, titles or hashtags, you may end with a \`\`\`boost JSON blo
       : '';
     return [
       { role: 'system', content: systemPrompt(ctx, settings) },
-      { role: 'user', content: `Generate 6 NEW title candidates in ${settings.contentLang} for this ${ctx.isShort ? 'Short' : 'video'}, each ≤ 70 characters, each a different angle, main keyword early, strongly optimised for the vidIQ title score (search keyword match, length, emotional hook, clarity).${history}\nReply ONLY with the block:\n\`\`\`boost\n{"titles": ["..."]}\n\`\`\`` }
+      { role: 'user', content: `Generate 6 NEW title candidates in ${contentLang(settings, ctx)} for this ${ctx.isShort ? 'Short' : 'video'}, each ≤ 70 characters, each a different angle, main keyword early, strongly optimised for the vidIQ title score (search keyword match, length, emotional hook, clarity).${history}\nReply ONLY with the block:\n\`\`\`boost\n{"titles": ["..."]}\n\`\`\`` }
     ];
   }
 
@@ -120,5 +131,5 @@ If you propose tags, titles or hashtags, you may end with a \`\`\`boost JSON blo
     return empty ? null : p;
   }
 
-  window.VBAI = { systemPrompt, channelPrompt, channelBlock, titleTesterPrompt, parse, QUICK };
+  window.VBAI = { contentLang, systemPrompt, channelPrompt, channelBlock, titleTesterPrompt, parse, QUICK };
 })();

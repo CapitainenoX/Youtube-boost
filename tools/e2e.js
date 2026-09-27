@@ -120,6 +120,13 @@ const assert = (cond, msg) => { if (!cond) { console.error('✗', msg); process.
   await vb('.tab[data-tab="chat"]').click();
   await vb('.quick [data-quick="all"]').click();
   await vb('.card').waitFor({ timeout: 8000 });
+  const houseScore = await vb('.chip[data-tag="minecraft house"] .tscore').innerText();
+  const tutoScore = await vb('.chip[data-tag="minecraft tutorial"] .tscore').innerText();
+  assert(houseScore === '82' && tutoScore === '38', `tag notes read from vidIQ (house ${houseScore}, tutorial ${tutoScore})`);
+  assert(/in English/.test(prompts.at(-1).messages[0].content), 'no video language set → titles/description asked in English');
+  await vb('[data-action="tags-best"]').click();
+  assert(await vb('.chip[data-tag="minecraft tutorial"]').getAttribute('aria-pressed') === 'false', '« Meilleurs » drops the low-scoring tag');
+  await vb('.chip[data-tag="minecraft tutorial"]').click();   // user keeps it anyway
   await vb('[data-apply="tags"]').click();
   await page.waitForTimeout(600);
   const tags = await page.$$eval('ytcp-chip #chip-text', els => els.map(e => e.textContent));

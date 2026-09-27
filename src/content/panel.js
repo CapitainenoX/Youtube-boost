@@ -160,7 +160,12 @@
   const copy = t => navigator.clipboard.writeText(t).then(() => toast('Copié'), () => toast('Copie impossible', true));
 
   /* ---------- Storage ---------- */
-  const withDefaults = s => ({ ...window.VB_DEFAULT_SETTINGS, ...(s || {}), prefs: { ...window.VB_DEFAULT_SETTINGS.prefs, ...(s?.prefs || {}) } });
+  const withDefaults = s => {
+    const out = { ...window.VB_DEFAULT_SETTINGS, ...(s || {}), prefs: { ...window.VB_DEFAULT_SETTINGS.prefs, ...(s?.prefs || {}) } };
+    // One-time migration: titles/descriptions now default to English unless the video is in another language.
+    if (s && !s.langV2) { out.contentLang = 'Auto'; out.langV2 = true; }
+    return out;
+  };
 
   async function loadSettings() {
     const { settings } = await chrome.storage.local.get('settings');
@@ -357,16 +362,22 @@
     if (p.tags.length) {
       const plan = tagPlan(p, i, existing);
       const over = plan.total > S.LIMITS.tags;
+      const scores = tagScores(plan.fresh);
+      const fromVidiq = plan.fresh.filter(t => scores[t].source === 'vidIQ').length;
+      const ranked = [...plan.fresh].sort((a, b) => scores[b].score - scores[a].score);
       parts.push(`<div class="sect"><div class="label">Tags <span class="count ${over ? 'over' : ''}">${plan.total}/500</span></div>
-        <div class="chips">${plan.fresh.map(t => {
+        <div class="help" style="margin:-2px 0 8px" ${plan.fresh.length ? '' : 'hidden'}>${fromVidiq ? `Notes vidIQ pour ${fromVidiq}/${plan.fresh.length} tags, les autres en note locale (◦).` : 'Notes locales (◦) : vidIQ n’affiche pas de score pour ces tags.'}</div>
+        <div class="chips">${ranked.map(t => {
           const on = u.tags.has(t);
           const fits = on || S.tagsLength([...existing, ...plan.chosen, t]) <= S.LIMITS.tags;
-          return `<button class="chip ${fits ? '' : 'nofit'}" aria-pressed="${on}" data-tag="${esc(t)}" data-i="${i}" title="${fits ? 'Cliquer pour (dé)sélectionner' : 'Dépasse la limite de 500 caractères'}">${esc(t)}</button>`;
+          const sc = scores[t];
+          return `<button class="chip ${fits ? '' : 'nofit'}" aria-pressed="${on}" data-tag="${esc(t)}" data-i="${i}" title="${sc.source === 'vidIQ' ? 'Score vidIQ' : 'Note locale'} ${sc.score}/100${fits ? '' : ' · dépasse la limite de 500 caractères'}">${esc(t)}<span class="tscore ${sc.score >= 70 ? 'hi' : sc.score >= 45 ? 'mid' : 'lo'}">${sc.score}${sc.source === 'vidIQ' ? '' : '◦'}</span></button>`;
         }).join('') || '<span class="muted">Tous ces tags sont déjà sur la vidéo.</span>'}</div>
         <div class="meter ${over ? 'over' : ''}"><i style="transform:scaleX(${Math.min(1, plan.total / 500)})"></i></div>
         <div class="row" style="margin-top:10px">
           <span class="muted" style="font-size:12px">${plan.already ? `${plan.already} déjà présent${plan.already > 1 ? 's' : ''}` : ''}</span>
           <span class="spacer"></span>
+          ${plan.fresh.length > 1 ? `<button class="btn sm ghost" data-action="tags-best" data-i="${i}" title="Garde les mieux notés dans la limite de 500 caractères">Meilleurs</button>` : ''}
           ${plan.fresh.length ? `<button class="btn sm ghost" data-action="tags-toggle-all" data-i="${i}">${plan.chosen.length === plan.fresh.length ? 'Aucun' : 'Tous'}</button>` : ''}
           ${!can ? `<button class="btn sm primary" data-action="copy-tags" data-i="${i}" ${plan.chosen.length ? '' : 'disabled'}>${icon('copy')}Copier ${plan.chosen.length}</button>`
             : u.applied.has('tags') ? doneBtn('Ajoutés') : `<button class="btn sm primary" data-apply="tags" data-i="${i}" ${plan.chosen.length && !over ? '' : 'disabled'}>${icon('plus')}Ajouter ${plan.chosen.length}</button>`}
@@ -394,6 +405,15 @@
       <div class="card-head">${icon('zap')}Propositions<span class="spacer"></span>
         ${can && kinds > 1 ? (allDone ? `<span class="badge on">${icon('check')}Appliqué</span>` : `<button class="btn sm primary" data-apply="all" data-i="${i}">Tout appliquer</button>`) : ''}
       </div>${parts.join('')}</div>`;
+  }
+
+  // Scores for tags on the current page (vidIQ when it shows one, local note otherwise).
+  function tagScores(tags) {
+    if (state.mode !== 'edit') {
+      const ctx = { title: state.watched?.title || '', description: '', tags: [], vidiq: { detected: false, text: '' } };
+      return Object.fromEntries(tags.map(t => [t, { score: T.localTagScore(t, ctx, ''), source: 'local' }]));
+    }
+    return T.scoreTags(tags, S.read());
   }
 
   const proposalAt = i => (state.history[i] ? AI.parse(state.history[i].content).proposal : null);
@@ -593,6 +613,7 @@
       <div class="row wrap" style="margin-bottom:16px">
         <span class="badge">${ctx.isShort ? 'Short' : 'Vidéo'}</span>
         ${pm.category ? `<span class="badge">${esc(pm.category)}</span>` : ''}
+        <span class="badge" title="Langue des titres et descriptions proposés">${esc(AI.contentLang(state.settings, ctx))}</span>
         <span class="badge ${ctx.vidiq.detected ? 'on' : ''}" title="${ctx.vidiq.detected ? 'Les données vidIQ de la page sont envoyées à l’IA' : 'Extension vidIQ non détectée sur cette page'}"><span class="dot"></span>vidIQ</span>
         <span class="spacer"></span>
         <button class="icon-btn" data-action="refresh" title="Relire la page" aria-label="Relire">${icon('refresh')}</button>
@@ -778,7 +799,7 @@
     const prov = PROVIDERS[id];
     const key = s.keys?.[id] || '';
     const p = s.prefs;
-    const langs = ['Français', 'English', 'Español', 'Deutsch', 'Português', 'Italiano', 'العربية', 'Türkçe'];
+    const langs = [['Auto', 'Auto : anglais, sauf si la vidéo est dans une autre langue'], ...['English', 'Français', 'Español', 'Deutsch', 'Português', 'Italiano', 'العربية', 'Türkçe'].map(l => [l, l])];
     const prefSeg = (name, val) => `<div class="seg"><button data-pref="${name}" data-val="1" aria-pressed="${val === true}">Oui</button><button data-pref="${name}" data-val="0" aria-pressed="${val === false}">Non</button></div>`;
     ref('settingsBody').innerHTML = `
       <div class="field">
@@ -811,7 +832,7 @@
 
       <div class="field">
         <div class="label">Langue des titres et descriptions</div>
-        <select class="input" data-ref="lang">${langs.map(l => `<option ${l === s.contentLang ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select class="input" data-ref="lang">${langs.map(([v, l]) => `<option value="${v}" ${v === s.contentLang ? 'selected' : ''}>${l}</option>`).join('')}</select>
       </div>
 
       <div class="field">
@@ -963,6 +984,19 @@
       case 'copy-tags': return copy([...uiFor(i).tags].join(', '));
       case 'copy-watched-tags': return copy((state.watched?.tags || []).join(', '));
       case 'expand': uiFor(i).expanded = !uiFor(i).expanded; return rerenderMsg(i);
+      case 'tags-best': {
+        // Highest scores first, as many as fit in the 500-character budget.
+        const p = proposalAt(i);
+        const existing = state.mode === 'edit' ? S.read().tags || [] : [];
+        const plan = tagPlan(p, i, existing);
+        const sc = tagScores(plan.fresh);
+        const u = uiFor(i);
+        u.tags = new Set();
+        for (const t of [...plan.fresh].sort((a, b) => sc[b].score - sc[a].score)) {
+          if (sc[t].score >= 45 && S.tagsLength([...existing, ...u.tags, t]) <= S.LIMITS.tags) u.tags.add(t);
+        }
+        return rerenderMsg(i);
+      }
       case 'tags-toggle-all': {
         const p = proposalAt(i);
         const existing = state.mode === 'edit' ? S.read().tags || [] : [];

@@ -18,6 +18,12 @@ Extension Chrome (Manifest V3) : un panel IA minimaliste dans **YouTube Studio**
 - Sur une vidéo YouTube (la tienne ou celle d'un concurrent) : ses **tags cachés**, ses vues et un bouton *Analyser*.
 - **Chat** : « Qu'est-ce qui marche ? », idées de vidéos, quand publier. Les chiffres viennent uniquement de tes vidéos.
 
+### Langue
+Titres et descriptions en **anglais par défaut** (réglage « Auto »), sauf si la vidéo est réglée dans une autre langue dans Studio (*Langue de la vidéo*) : ils sont alors écrits dans cette langue. Les tags restent en anglais.
+
+### Notes des tags (vidIQ)
+Chaque tag proposé porte une note sur 100 : celle de **vidIQ** quand vidIQ l'affiche sur la page, sinon une note locale marquée ◦ (tag court et précis, en anglais, lié au sujet, suggéré par vidIQ). Les tags sont triés par note ; **Meilleurs** garde les mieux notés dans la limite de 500 caractères.
+
 ### Réglages
 Fournisseur IA (Groq, Gemini, OpenRouter, OpenAI, Mistral), clé, modèle (*Tester*), langue, langue des tags, créativité, **préférences vidéo par défaut** (enfants, promotion payée, contenu IA, catégorie), ID de chaîne (rempli automatiquement), vidIQ on/off, affichage sur youtube.com, réglages avancés du testeur.
 
@@ -50,7 +56,7 @@ Ensuite : **Mode développeur** → **Charger l'extension non empaquetée** → 
 
 ## App mobile (Android) — `mobile/`
 
-Web app installable (PWA) : tu mets en ligne dans l'app YouTube comme d'habitude, puis **Partager → Video Boost**. L'IA propose le titre, les tags (ajoutés à la suite des tags existants), la description, les hashtags, la catégorie, « conçue pour les enfants » et « contenu IA ». Un tap sur **Appliquer sur YouTube** écrit tout sur la vidéo via l'API officielle YouTube Data v3 (`videos.update`). Le résultat est visible dans YouTube Studio.
+Web app installable (PWA) : tu mets en ligne dans l'app YouTube comme d'habitude, puis **Partager → Video Boost**. L'IA propose le titre, les tags (ajoutés à la suite des tags existants), la description, les hashtags, la catégorie, « conçue pour les enfants », « promotion rémunérée » et « contenu IA ». Un tap sur **Appliquer sur YouTube** écrit tout sur la vidéo via l'API officielle YouTube Data v3 (`videos.update`). Le résultat est visible dans YouTube Studio.
 
 ### Mise en ligne (une fois)
 1. GitHub → repo → **Settings → Pages** → Source : *Deploy from a branch* → branche `claude/eloquent-dijkstra-74js81`, dossier `/ (root)`.

@@ -30,7 +30,7 @@ const answer = 'Voilà.\n```boost\n' + JSON.stringify({
 (async () => {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ ...devices['Pixel 7'], serviceWorkers: 'block' });
-  let put = null;
+  let put = null, aiBody = null;
 
   await ctx.route(`${ORIGIN}/Youtube-boost/**`, r => {
     const rel = new URL(r.request().url()).pathname.replace('/Youtube-boost/', '');
@@ -48,7 +48,7 @@ const answer = 'Voilà.\n```boost\n' + JSON.stringify({
     if (req.url().includes('/channels?')) return r.fulfill({ json: { items: [{ contentDetails: { relatedPlaylists: { uploads: 'UUx' } } }] } });
     return r.fulfill({ json: { items: [{ snippet: { title: 'Minecraft maison', publishedAt: '2026-09-26T10:00:00Z' }, contentDetails: { videoId: 'ddddddddd01' } }] } });
   });
-  await ctx.route('https://api.groq.com/**', r => r.fulfill({ json: { choices: [{ message: { content: answer } }] } }));
+  await ctx.route('https://api.groq.com/**', r => { aiBody = r.request().postDataJSON(); r.fulfill({ json: { choices: [{ message: { content: answer } }] } }); });
   await ctx.route('https://i.ytimg.com/**', r => r.fulfill({ status: 404 }));
 
   const page = await ctx.newPage();
@@ -78,6 +78,9 @@ const answer = 'Voilà.\n```boost\n' + JSON.stringify({
   assert(put.snippet.title === 'Maison Minecraft facile en 45 s' && put.snippet.categoryId === '20', 'title + category written');
   assert(put.snippet.description === 'Ma maison.\n\n#minecraft #shorts', 'existing description kept, hashtags appended');
   assert(put.status.privacyStatus === 'private' && put.status.selfDeclaredMadeForKids === false && put.status.containsSyntheticMedia === false && put.snippet.defaultLanguage === 'fr', 'status and language preserved, audience + AI flags sent');
+
+  assert(/Titles: in French/.test(aiBody.messages[0].content), 'video language fr → titles/description asked in French');
+  assert(put.paidProductPlacementDetails?.hasPaidProductPlacement === false, 'paid promotion sent');
 
   // Home list after login
   await page.click('[data-go="home"]');

@@ -280,6 +280,11 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 .head .btn.sm { height: 28px; padding: 0 10px; }
 .diag { max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 8px 10px; background: var(--surface); border-radius: 8px; font: 11px/1.4 "Roboto Mono", ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; }
 
+.chip .tscore { margin: 0 -4px 0 2px; padding: 1px 5px; border-radius: 999px; font: 10.5px/1.3 "Roboto Mono", ui-monospace, monospace; background: var(--surface-2); color: var(--muted); }
+.chip .tscore.hi { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.chip .tscore.mid { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+button.chip[aria-pressed="true"] .tscore { background: color-mix(in srgb, var(--ink-fg) 18%, transparent); color: var(--ink-fg); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

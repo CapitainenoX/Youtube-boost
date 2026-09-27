@@ -56,6 +56,8 @@
   const defaults = { ...window.VB_DEFAULT_SETTINGS, clientId: '', prefs: { ...window.VB_DEFAULT_SETTINGS.prefs, apply: true } };
   const saved = store.get();
   const settings = { ...defaults, ...saved, prefs: { ...defaults.prefs, ...(saved.prefs || {}) } };
+  // One-time migration: titles/descriptions default to English unless the video is in another language.
+  if (!saved.langV2) { settings.contentLang = 'Auto'; settings.langV2 = true; }
   const save = () => store.set(settings);
 
   function parseVideoId(text) {
@@ -208,7 +210,7 @@
     state.screen = 'video';
     $app.innerHTML = loading('Lecture de la vidéo…');
     try {
-      const r = await yt(`/videos?part=snippet,status,contentDetails&id=${encodeURIComponent(id)}`, {}, false);
+      const r = await yt(`/videos?part=snippet,status,contentDetails,paidProductPlacementDetails&id=${encodeURIComponent(id)}`, {}, false);
       const v = r.items?.[0];
       if (!v) throw new Error('Vidéo introuvable, ou pas sur ta chaîne (elle peut mettre une minute à apparaître après l’upload).');
       const seconds = isoSeconds(v.contentDetails?.duration);
@@ -224,6 +226,12 @@
           <button class="btn ghost block" data-go="home">Retour</button>`;
       }
     }
+  }
+
+  // BCP-47 code from the API ("fr", "pt-BR") → English language name for the prompt; '' when unset.
+  function languageName(code) {
+    if (!code) return '';
+    try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || code; } catch { return code; }
   }
 
   function isoSeconds(d) {
@@ -243,6 +251,7 @@
         description: v.snippet.description || '',
         tags: v.snippet.tags || [],
         category: CATEGORY_EN[v.snippet.categoryId] || '',
+        language: languageName(v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage),
         vidiq: { detected: false, text: '' }
       };
       const ask = AI.QUICK.all + (extra ? `\nConsigne : ${extra}` : '');
@@ -275,7 +284,8 @@
       tags: chosen,
       categoryId: categoryIdFor(p.category) || catPref || v.snippet.categoryId,
       madeForKids: prefs.apply ? prefs.madeForKids : v.status.selfDeclaredMadeForKids ?? false,
-      altered: prefs.apply ? prefs.altered : v.status.containsSyntheticMedia ?? false
+      altered: prefs.apply ? prefs.altered : v.status.containsSyntheticMedia ?? false,
+      paidPromo: prefs.apply ? prefs.paidPromo : v.paidProductPlacementDetails?.hasPaidProductPlacement ?? false
     };
   }
 
@@ -329,7 +339,9 @@
       <div class="field"><div class="label">Paramètres</div>
         <label class="param"><span>Catégorie</span><select class="input" id="cat">${CATEGORIES.map(([id, name]) => `<option value="${id}" ${id === String(d.categoryId) ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></label>
         <div class="param"><span>Conçue pour les enfants</span>${seg('madeForKids', d.madeForKids)}</div>
-        <div class="param"><span>Contenu modifié / IA</span>${seg('altered', d.altered)}</div></div>
+        <div class="param"><span>Promotion rémunérée</span>${seg('paidPromo', d.paidPromo)}</div>
+        <div class="param"><span>Contenu modifié / IA</span>${seg('altered', d.altered)}</div>
+        <p class="help">Titre et description en ${esc(AI.contentLang(settings, { language: languageName(v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage) }))}.</p></div>
 
       <form class="row field" id="regen"><input class="input grow" id="extra" placeholder="Consigne (optionnel) : plus court, humour…" autocomplete="off">
         <button class="btn" type="submit" aria-label="Régénérer">${icon('refresh')}</button></form>
@@ -374,11 +386,23 @@
           containsSyntheticMedia: d.altered
         }
       };
-      const updated = await yt('/videos?part=snippet,status', { method: 'PUT', body: JSON.stringify(body) });
+      body.paidProductPlacementDetails = { hasPaidProductPlacement: d.paidPromo };
+      let updated, promoSkipped = false;
+      try {
+        updated = await yt('/videos?part=snippet,status,paidProductPlacementDetails', { method: 'PUT', body: JSON.stringify(body) });
+      } catch (err) {
+        // If this API project may not write the paid-promotion part, save the rest and say so.
+        if (!/paidProductPlacement/i.test(err.message)) throw err;
+        delete body.paidProductPlacementDetails;
+        updated = await yt('/videos?part=snippet,status', { method: 'PUT', body: JSON.stringify(body) });
+        promoSkipped = true;
+      }
       state.video = { ...state.video, snippet: updated.snippet, status: { ...state.video.status, ...updated.status } };
       btn.classList.add('done');
       btn.innerHTML = `${icon('check')}Appliqué sur YouTube`;
-      toast(`${tags.length - (s.tags || []).length} tag(s) ajouté(s) · visible dans YouTube Studio`);
+      toast(promoSkipped
+        ? 'Appliqué, sauf la promotion rémunérée (refusée par YouTube) : règle-la dans Studio'
+        : `${tags.length - (s.tags || []).length} tag(s) ajouté(s) · visible dans YouTube Studio`, promoSkipped);
     } catch (e) {
       btn.disabled = false;
       btn.innerHTML = `${icon('check')}Appliquer sur YouTube`;
@@ -405,10 +429,12 @@
         <p class="help"><a href="${esc(prov.keyUrl)}" target="_blank" rel="noopener">Obtenir une clé ${esc(prov.label)}</a> · Groq et Gemini marchent depuis le téléphone.</p></div>
 
       <div class="field"><div class="label">Langue des titres et descriptions</div>
-        <select class="input" id="lang">${['Français', 'English', 'Español', 'Deutsch', 'Português', 'Italiano'].map(l => `<option ${l === s.contentLang ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <select class="input" id="lang">${[['Auto', 'Auto : anglais, sauf vidéo dans une autre langue'], ...['English', 'Français', 'Español', 'Deutsch', 'Português', 'Italiano'].map(l => [l, l])].map(([v, l]) => `<option value="${v}" ${v === s.contentLang ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <p class="help">La langue de la vidéo se règle dans YouTube Studio (Langue de la vidéo).</p></div>
 
       <div class="field"><div class="label">Préférences par défaut</div>
         <div class="param"><span>Conçue pour les enfants</span>${seg('madeForKids', s.prefs.madeForKids)}</div>
+        <div class="param"><span>Promotion rémunérée</span>${seg('paidPromo', s.prefs.paidPromo)}</div>
         <div class="param"><span>Contenu modifié / IA</span>${seg('altered', s.prefs.altered)}</div>
         <label class="param"><span>Catégorie</span><select class="input" id="prefCat"><option value="-1">Choix de l’IA</option>${CATEGORIES.map(([, name], k) => `<option value="${k}" ${k === s.prefs.category ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></label></div>
 

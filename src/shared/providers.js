@@ -51,7 +51,8 @@
     keys: {},            // { providerId: apiKey } — stored in chrome.storage.local only
     models: {},          // { providerId: modelId }
     temperature: 0.7,
-    contentLang: 'Français',   // language of titles / descriptions
+    contentLang: 'Auto',       // titles / descriptions: 'Auto' = English unless the video's language is another one
+    langV2: true,              // settings saved before the 'Auto' default existed get migrated once
     tagMode: 'en',             // 'en' = English only, 'mixed' = English + content language
     useVidiq: true,
     // Default video parameters, applied by "Appliquer mes préférences" (never automatically).

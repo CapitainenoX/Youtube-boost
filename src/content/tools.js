@@ -101,5 +101,30 @@
     return run;
   }
 
-  window.VBTools = { ask, titleTester, localTitleScore };
+  // Transparent local tag score (used when vidIQ shows none): short, specific, English, on-topic, vidIQ-suggested.
+  function localTagScore(tag, ctx, vidiqText) {
+    const t = tag.toLowerCase().trim();
+    const words = t.split(/\s+/);
+    const topic = new Set(`${ctx.title} ${(ctx.tags || []).join(' ')} ${ctx.description.slice(0, 300)}`.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []);
+    let s = 0;
+    s += words.length >= 2 && words.length <= 3 ? 25 : words.length === 1 ? 15 : 5;
+    s += t.length <= 25 ? 15 : t.length <= 35 ? 8 : 0;
+    s += /^[a-z0-9 '&-]+$/.test(t) ? 10 : 0;
+    s += words.some(w => topic.has(w)) ? 25 : 0;
+    s += vidiqText && vidiqText.toLowerCase().includes(t) ? 25 : 0;
+    return Math.min(100, s);
+  }
+
+  // { tag: { score, source: 'vidIQ' | 'local' } } for a list of tags, reading vidIQ once.
+  function scoreTags(tags, ctx) {
+    const vidiqText = ctx.vidiq?.detected ? ctx.vidiq.text : '';
+    const fromVidiq = vidiqText ? S.readVidiqTagScores(tags, vidiqText) : {};
+    const out = {};
+    for (const t of tags) {
+      out[t] = fromVidiq[t] != null ? { score: fromVidiq[t], source: 'vidIQ' } : { score: localTagScore(t, ctx, vidiqText), source: 'local' };
+    }
+    return out;
+  }
+
+  window.VBTools = { ask, titleTester, localTitleScore, localTagScore, scoreTags };
 })();

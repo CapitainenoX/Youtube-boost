@@ -73,6 +73,7 @@
       description: text($(SEL.description)),
       tags: readTags(),
       category: categoryText(),
+      language: videoLanguage(),
       vidiq: readVidiq(),
       found: { title: !!$(SEL.title), description: !!$(SEL.description), tags: !!tagsContainer() }
     };
@@ -331,6 +332,16 @@
     return t.split(/\s{2,}|\n/)[0].trim();
   }
 
+  // Studio's "Langue de la vidéo" select (falls back to "Langue du titre et de la description"). '' = not set.
+  function videoLanguage() {
+    for (const label of [/^\s*(langue de la vid[ée]o|video language)\s*/i, /^\s*(langue du titre et de la description|title and description language)\s*/i]) {
+      const f = deepAll('ytcp-form-select').find(el => label.test(deepText(el)));
+      const v = f ? deepText(f).replace(label, '').split(/\s{2,}|\n/)[0].trim().slice(0, 40) : '';
+      if (v && !/^(s[ée]lectionner|select|aucun|none)\b/i.test(v)) return v;
+    }
+    return '';
+  }
+
   function readParams() {
     const cat = categoryText();
     const kidsYes = kidsRadio(true), kidsNo = kidsRadio(false);
@@ -451,7 +462,12 @@
       checkboxes: deepAll(CHECKBOX).slice(0, 12).map(brief),
       selects: deepAll('ytcp-form-select, ytcp-dropdown-trigger, ytcp-select').slice(0, 10).map(brief),
       saveCandidates: deepAll('ytcp-button, button').filter(b => /enregistrer|save/i.test(deepText(b))).slice(0, 5).map(brief),
-      vidiq: readVidiq().text.slice(0, 400)
+      vidiq: readVidiq().text.slice(0, 600),
+      // Short vidIQ elements holding a number: where its scores live, to wire them exactly.
+      vidiqScores: [...document.querySelectorAll('[class*="vidiq" i] *, [id*="vidiq" i] *')]
+        .filter(el => !el.children.length && /\d/.test(el.textContent || '') && (el.textContent || '').trim().length <= 40)
+        .slice(0, 25)
+        .map(el => ({ tag: el.tagName.toLowerCase(), cls: String(el.className || '').slice(0, 60), text: el.textContent.trim(), parent: (el.parentElement?.textContent || '').trim().slice(0, 60) }))
     };
   }
 
@@ -480,6 +496,24 @@
       if (Number.isFinite(n) && n <= 100) return n;
     }
     return null;
+  }
+
+  /* ---------- vidIQ tag scores ----------
+   * vidIQ prints a score next to the keywords it rates (its tag suggestions, the keyword inspector…).
+   * Its markup is undocumented, so we match each tag in vidIQ's visible text and take the 0–100 number
+   * right after it (same or next line) or right before it. null = vidIQ shows no score for that tag. */
+  function readVidiqTagScores(tags, vidiqText) {
+    const text = vidiqText ?? readVidiq().text;
+    const out = {};
+    for (const tag of tags) {
+      const t = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+      const after = new RegExp(`(?:^|[\\n\\s])${t}(?![\\p{L}\\p{N}])[^\\p{L}\\n\\d]{0,6}\\n?\\s*(\\d{1,3})(?!\\d)`, 'iu');
+      const before = new RegExp(`(?:^|\\n)\\s*(\\d{1,3})\\s*\\n?\\s*${t}\\s*(?:\\n|$)`, 'iu');
+      const m = text.match(after) || text.match(before);
+      const n = m ? parseInt(m[1], 10) : NaN;
+      out[tag] = Number.isFinite(n) && n <= 100 ? n : null;
+    }
+    return out;
   }
 
   /* ---------- Channel ---------- */
@@ -518,6 +552,6 @@
   window.VBStudio = {
     read, videoId, setTitle, setDescription, appendHashtags, addTags, removeTag, ensureTagsVisible, tagCost, tagsLength, cleanTag, LIMITS,
     CATEGORIES, categoryIndex, readParams, setMadeForKids, setPaidPromo, setAltered, setCategory, save, saveButton, diagnose, setAgeRestricted,
-    readVidiq, readVidiqScore, channelId, readContentRows
+    readVidiq, readVidiqScore, readVidiqTagScores, channelId, readContentRows
   };
 })();
